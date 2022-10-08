@@ -1,0 +1,773 @@
+remote sensing
+
+Article
+A LiDAR/Visual SLAM Backend with Loop Closure Detection and Graph Optimization
+
+Shoubin Chen 1,2,3, Baoding Zhou 4,5 , Changhui Jiang 6,*, Weixing Xue 1 and Qingquan Li 1,2
+
+1 Guangdong Key Laboratory of Urban Informatics, Shenzhen University, Shenzhen 518060, China;
+shoubin.chen@whu.edu.cn (S.C.); weixingxue@whu.edu.cn (W.X.); liqq@szu.edu.cn (Q.L.) 2 School of Architecture and Urban Planning, Shenzhen University, Shenzhen 518060, China 3 Orbbec Research, Shenzhen 518052, China 4 Institute of Urban Smart Transportation & Safety Maintenance, Shenzhen University, Shenzhen 518060, China;
+bdzhou@szu.edu.cn 5 Key Laboratory for Resilient Infrastructures of Coastal Cities (Shenzhen University), Ministry of Education,
+Shenzhen 518060, China 6 Department of Photogrammetry and Remote Sensing, Finnish Geospatial Research Institute (FGI),
+FI-02430 Masala, Finland
+* Correspondence: changhui.jiang@nls.ﬁ; Tel.: +86-137-7091-6637
+
+Citation: Chen, S.; Zhou, B.; Jiang, C.; Xue, W.; Li, Q. A LiDAR/Visual SLAM Backend with Loop Closure Detection and Graph Optimization. Remote Sens. 2021, 13, 2720. https:// doi.org/10.3390/rs13142720
+Academic Editors: Johannes Otepka, Martin Weinmann, Di Wang and Kourosh Khoshelham
+Received: 7 June 2021 Accepted: 6 July 2021 Published: 10 July 2021
+Publisher’s Note: MDPI stays neutral with regard to jurisdictional claims in published maps and institutional afﬁliations.
+Copyright: © 2021 by the authors. Licensee MDPI, Basel, Switzerland. This article is an open access article distributed under the terms and conditions of the Creative Commons Attribution (CC BY) license (https:// creativecommons.org/licenses/by/ 4.0/).
+
+Abstract: LiDAR (light detection and ranging), as an active sensor, is investigated in the simultaneous localization and mapping (SLAM) system. Typically, a LiDAR SLAM system consists of front-end odometry and back-end optimization modules. Loop closure detection and pose graph optimization are the key factors determining the performance of the LiDAR SLAM system. However, the LiDAR works at a single wavelength (905 nm), and few textures or visual features are extracted, which restricts the performance of point clouds matching based loop closure detection and graph optimization. With the aim of improving LiDAR SLAM performance, in this paper, we proposed a LiDAR and visual SLAM backend, which utilizes LiDAR geometry features and visual features to accomplish loop closure detection. Firstly, the bag of word (BoW) model, describing the visual similarities, was constructed to assist in the loop closure detection and, secondly, point clouds rematching was conducted to verify the loop closure detection and accomplish graph optimization. Experiments with different datasets were carried out for assessing the proposed method, and the results demonstrated that the inclusion of the visual features effectively helped with the loop closure detection and improved LiDAR SLAM performance. In addition, the source code, which is open source, is available for download once you contact the corresponding author.
+Keywords: LiDAR; graph optimization; loop closure detection
+1. Introduction The concept of simultaneous localization and mapping (SLAM) was ﬁrst proposed
+in 1986 by Cheeseman [1,2]. Estimation theory was introduced into robots mapping and position. After more than 30 years of development, SLAM technology is no longer limited to theoretical research in the ﬁeld of robotics and automation; it is now promoted in many applications, i.e., intelligent robots, autonomous driving, mobile surveying, and mapping [3].
+The core of SLAM is to utilize sensors, i.e., a camera and LiDAR, to perceive the environment and estimate states, i.e., position and attitude [4]. Generally, a typical SLAM includes two parts: a front-end odometer and a back-end optimization [5]. The front-end odometer estimates the state and maps the environment. The back-end optimization corrects the cumulative errors of the front-end odometer and improves the state estimation accuracy. In the back-end optimization, loop closure detection is also included for improving the performance of the back-end optimization. Traditionally, SLAM technology is divided according to the employed sensors, i.e., visual SLAM employs cameras as the
+
+Remote Sens. 2021, 13, 2720. https://doi.org/10.3390/rs13142720
+
+https://www.mdpi.com/journal/remotesensing
+
+Remote Sens. 2021, 13, 2720
+
+2 of 29
+sensor, while LiDAR SLAM utilizes LiDAR as the sensor to scan the environment [6–12]. Researchers have conducted numerous investigations on the above-mentioned visual and LiDAR SLAM.
+Visual SLAM, with the advantages of low cost and rich features, is widely investigated by researchers in both the academic and industrial communities. According to the image matching methods employed, visual SLAM is divided into two categories: features-based SLAM and direct SLAM [6]. The ﬁrst real-time monocular visual SLAM was presented in 2007 by A. J. Davison, and, the so-called Mono-SLAM, was a milestone in the development of visual SLAM. Mono-SLAM estimates the state though matching images and tracking the features. An extended Kalman ﬁlter (EKF) is employed in the back-end to optimize the state estimation. Klein et al. proposed a key frame-based visual SLAM algorithm, PTAM (parallel tracking and mapping) [7]. The front-end and back-end concepts are ﬁrst revealed, and, in PTAM, the features tracking and mapping run parallelly. In addition, PTAM ﬁrst realized non-linear optimization (NO) to replace traditional KF methods. The NO method employs a sequence of key frames that optimize the trajectory and the map. Starting from this, NO, rather than KF methods, became the dominant method in visual SLAM. Based on the LTAM, ORB-SLAM was developed based on the PTAM, and it innovatively realizes real-time feature point tracking, local light speed adjustment optimization, and global graph optimization [8]. Shen, from the Hong Kong University of Science and Technology, proposed a robust monocular visual-inertial state estimator (VINS) [13–15] by fusing the pre-integrated inertial measurement unit (IMU) measurements and feature tracking measurements to obtain high-precision visual-inertial odometry.
+Since the feature points extraction and tracking are time-consuming and difﬁcult to meet real-time requirements, researchers have proposed some more direct methods, i.e., LSD [16], SVO [17], and DSO [18], to improve the processing efﬁciency. The direct method skips the feature extraction and directly utilizes the photometric measurement of the camera and establishes its relationship with the motion estimation. Engel, from the Technical University of Munich, proposed the LSD-SLAM (large direct monocular SLAM) in 2014. In the LSD SLAM, the uncertainty of the depth, with the probability, is estimated, and the pose map of the key frame is established for optimization. Forster et al. released the semi-direct visual odometry (SVO) in 2014. The direct method and the feature point method were mixed to greatly increase the speed of calculation, allowing for the SLAM method to be suitable for drones and mobile phone handheld devices. Real-time performance can also be achieved on low-end computing platforms. Engel’s open source direct visual odometry (DSO), created in 2016, claimed that it could achieve ﬁve times the speed of the feature point method, while maintaining the same accuracy. The original DSO system was not a complete SLAM, and did not include loop closure detection and back-end optimization functions. On this basis, other members of Engel’s laboratory implemented stereo DSO [18] and DSO with loop closure detection (LDSO) [5].
+Compared with vision cameras, LiDAR has the advantages of high accuracy, low calculation volume, and easy to realize real-time SLAM. LiDAR actively collects the point clouds of the environment, and it is not affected by environmental lighting conditions. The disadvantages of LiDAR are that it is expensive, and the sensor size and power consumption are difﬁcult to meet the requirements of mobile smart devices. In recent years, with the rapid development of artiﬁcial intelligence (AI) and autonomous driving, LiDAR SLAM technology has also achieved many breakthroughs. Google revealed the representative LiDAR SLAM system Cartographer in September 2014. The ﬁrst version of the Cartographer consisted of two Hokuyo multi-echo laser scanners and an IMU, and the upgraded version includes two Velodyne 16-line LiDARs.
+The solutions for LiDAR SLAM can be divided into two categories: Bayes-based estimation methods (Bayes-based) and graph-based optimization methods (graph-based) [19,20]. Bayes-based SLAM is regarded as a mobile platform’s pose state estimation problem, and it continuously predicts and updates the current state of motion based on the latest measured values. According to different ﬁltering algorithms, it can be divided into an extended
+
+Remote Sens. 2021, 13, 2720
+
+3 of 29
+
+Kalman ﬁlter (EKF) SLAM method, particle ﬁlter (PF) SLAM method, and information ﬁlter (IF) SLAM method. Representatives of Bayes-based LiDAR SLAM include Hector SLAM, and Gmapping, etc. Hector SLAM solves the two-dimensional plane translation and yaw angle matched by the single-line LiDAR scan using the Gauss Newton method [12]. Multi-resolution raster maps are utilized to avoid the state estimation falling into the local optimum. EKF is employed to fuse the information from the IMU and the LiDAR. Gmapping is an algorithm based on particle ﬁltering [11]. It can achieve better results when there are more particles, but it also consumes higher computing resources. It lacks loop closure detection and optimization; therefore, the accumulated errors cannot be effectively eliminated.
+The graph-based SLAM [19–21] method is also known as full SLAM. It usually takes observations as the constraints to model the graph structure and perform global optimization to achieve state estimation. Representative open-source algorithms include Karto SLAM [7], and Cartographer [9], etc. Karto SLAM is an algorithm based on graph optimization, which utilizes highly optimized and non-iterative Cholesky matrix decomposition to decouple sparse systems to solve the problem. The nodes represent a pose state of the robot or sensor observations, and the edges represent the constraints between nodes. When each new node is added, the geometric structure of the entire graph will be calculated and updated. Cartographer includes local matching in the front terminal graph and global back-end loop closure detection and subgraph optimization [22]. Cartographer has strong real-time performance and high accuracy, and it utilizes loop closure detection to optimize and correct the cumulative errors. In recent years, Zhang, from Carnegie Mellon University, proposed the LiDAR SLAM algorithm LOAM (LiDAR odometry and mapping) [10]. The core idea of LOAM is to run both high-frequency odometry pose estimation and low-frequency point clouds mapping in parallel. Two threads to achieve a balance between positioning accuracy and real-time performance; a generalized ICP algorithm is employed for adjacent frame point clouds matching method for high-frequency odometer pose estimation. The accuracy of geometric constraints is difﬁcult to guarantee, and the results are easy to diverge when solving nonlinear optimization.
+As mentioned previously, both visual SLAM and LiDAR SLAM have their own advantages and disadvantages. The visual camera outputs 2D image information, which can be divided into grayscale images and RGB color images. LiDAR outputs 3D discrete point clouds, and the radiation intensity is unreliable. The 3D here is strictly 2.5 D, because the real physical world is a 3D physical space, and the LiDAR point clouds are just a layer of surface models with depth differences, and the texture information behind the surface cannot be perceived by the single-wavelength LiDAR. Abundant investigations have revealed that the positioning accuracy of LiDAR SLAM is slightly higher than that of visual SLAM. In terms of robustness, the LiDAR point clouds are noisy at the corner points, and the radiation value of the visual image will change under different lighting conditions. It can be seen that if the laser LiDAR and vision camera can be externally calibrated with high precision, the point clouds and image data registration can make up for each other’s shortcomings and promote the overall performance of the SLAM.
+At present, research conducted on the SLAM technology of LiDAR/visual fusion is considerably less than the above two single-sensor SLAMs. Zhang proposed a depthenhanced monocular visual odometry (DEMO) in 2014 [23], which solves the problem of the loss of many pixels with large depth values during the state estimation of the visual odometry front-end. Graeter proposed the LiDAR-monocular visual odometry (LiDARLIMO) [24], which extracts depth information from LIDAR point clouds for camera feature point tracking, which makes up for the shortcomings of monocular visual scale. The core framework of the above two methods are still based on visual SLAM and the LiDAR works only as a supplemental role, and similar schemes include binocular visual inertial navigation LiDAR SLAM (stereo visual inertial LiDAR SLAM, VIL-SLAM) proposed by Shao [25,26]. In addition, Li implemented a SLAM system combining RGBD depth camera and 3D LiDAR. Since the depth camera itself can generate deep point clouds, the
+
+Remote Sens. 2021, 13, 2720
+
+4 of 29
+
+advantages of 3D LiDAR are not obvious. On the basis of EMO and LOAM, a visual/LiDAR SLAM (visual-LiDAR odometry and mapping, VLOAM) was developed [27,28]. The visual odometer provides the initial value for LiDAR point clouds matching, and its accuracy and robustness are further improved via the LOAM. VLOAM has achieved relatively high accuracy in the state estimation of the front-end odometer, but the lack of back-end loop closure detection and global graph optimization will inevitably affect the positioning accuracy and the consistency of map construction, and it will continue to degrade over time.
+Loop closure detection is of great signiﬁcance to SLAM systems. Since loop closure detection realizes the association between current data and all historical data, it helps to improve the accuracy, robustness, and consistency of the entire SLAM system [28]. In this paper, a LiDAR/visual SLAM based on loop closure detection and global graph optimization (GGO) is constructed to improves the accuracy of the positioning trajectory and the consistency of the point clouds map. A loop closure detection method, based on visual BoW similarity and point clouds re-matching, was implemented in the LiDAR/Visual SLAM system. KTTI datasets and WHU Kylin backpack datasets were utilized to evaluate the performance of the visual BoW similarity-based loop closure detection, and the position accuracy and point clouds map are presented for analyzing the performance of the proposed method.
+The remainder of the paper is organized as follows: Section 2 presents the architecture of the LiDAR/visual SLAM, the ﬂow chart of the loop closure detection; Section 3 presents the graph optimization, including the pose graph construction and the global pose optimization; and Section 4 presents the experiments, including the results and analysis. Section 5 concludes the paper.
+2. System and Methods 2.1. System Architecture
+The whole LV-SLAM also includes two parts: front-end odometry and back-end optimization. The system architecture is presented in Figure 1. The front-end used in this paper was an improved LOAM method, and the front-end problem was divided into two modules. One module performed odometry at a high-frequency, but at low ﬁdelity, to estimate the velocity of the laser scanner. A second module ran at a frequency of an order of magnitude lower for ﬁne matching and registration of the point clouds. In the original LOAM, feature points located on sharp edges and planar surfaces are extracted, and the feature points to edge line segments and planar surface patches are matched, respectively. The original LOAM belongs to the feature-based methods. Comparatively, our improved LOAM utilized the normal distributions transform (NDT) method instead of extracting feature points to the scans, matching directly and efﬁciently in the odometry module. In other words, the NDT-based odometry is referred to as direct odometry (DO). The mapping module is similar to the LOAM algorithm. Therefore, the front-end of the improved LOAM is also called DO-LFA.
+
+RReemmoottee SSeennss.. 22002211,, 1133,, 2x7F2O0 R PEER REVIEW
+Front-end Direct Odometry, DO Local Feature Adjustment, LFA
+
+Odometry
+
+55ooff 2297
+Data LiDAR point cloud
+
+Constraits Pose graph
+
+Back-end
+Loop closure detection
+Global optimization
+
+Trajectory and Point cloud
+
+Visual Images
+
+FFiigguurree 11.. SSyysstteemm aarrcchhiitteeccttuurree..
+2.2. LToohpeCblaocsukr-eenDdetgeclotibonal map optimization (GGO) was to construct global pose map optimThizearteioanreatnwdopsooliunttiocnlosutdosremalaizpealoftoepr cloloospurdeedteectteicotnio.nA: tfhteergethoemfertorny-tb-eansdedDmOe-tLhFoAd aonudtptuhtes ftehaetuordeos-mbaestreyd, wmeetﬁhrosdt.cTohmebgineeodmtehtreyB-boaWsedsimmieltahroitdy msceoarensofdethteectviinsguathl eimloaogpe calnodsutrheewpiotihntthcelokundoswrne-mmoavtcehminegntjuindfgomrmenattitoonrferaolmizeththeefrloonotp-ednedteocdtioomn.etTehr,esnu, cthhease,dfgoer ecxoanmstpralein, tws hbeentwtheeenpltahtefokrmey rfertaumrness two earececratalcinulpatoesdititoonctohnasttritupctastsheedpboesfeorme,atpo ovfertihfye wglhoebtahlekretyhferraemisesa. lFoionpal[ly2,8t,h29e]g. rTahpehgoepotmimeitzrayt-iboansethdeiodreyawisasinututiiltiziveedatnodresdimucpeleth, ebugtloibt aisl dcuifmficuulalttitvoeeexrercour,teimwphreonvethteheacgcluombaulltartaejdecetorrroyraicscluarragcey[3a0n]d. Wmiatph rceognasrisdtsentocyt,haenfdeaotbutraeisnbthaeseﬁdnlaologplocbloasl umreotdioentetcrtaiojenctmoreythaondd, pitohinats cnlootuhdins gmtaopd. o with the state estimation of the f2r.o2n. tL-oeonpdCalnosdurthe eDbetaecckti-oennd. It utilizes the similarity detection of two frames of images to detect the loop closure, which eliminates the influence of accumulated errors. The featuresT-bhaesreedalroeotpwcolossouluretiodnestetcotiroenalmizeetlhooodp hcalossbuereendaeptepcltiieodn:tothme ugletoipmleetvriys-ubaalsSeLdAmMethsyosdtaenmdsth[3e1f,3e2a]t.uHreos-wbeavseedr, mwehtihleodu.siTnhgetgheeofmeaetturrye-sbassimedilmareittyhoind tmheeadnestedcettioecnt,inthgethcue rlroeonpt fcrlaomsuerenweeidths tthoebkencoowmnpmaroevdemanedntcianlcfourlmateadtiowniftrhomalltpherefvroionut-sefnrdamodeso,mwehteicr,hsurecqhuaisr,efsoar leaxragme pamle,owunhteonftchaelcpullaattfioornm, arnedtuirtnws itlol baecienrvtaailnidpfoosritaiofneatthuarte’ist preapsesetidtivbeefeonrve,irtoonvmeerinfty, impiciwdbftfs.onoerlyeaaioouhgeaf.srs,uﬁdnntseteebuetdcetttddhfa-hmrutoseeeseetellafnocseostcrtdca-dtdotu[tbtono3ehphtroamac1heepeesnonc,ser3xpefrlrdeeoto2deaualhacs]ovirttt.telsuuieheoiouoHdrrtaieponmremeeveoplbcwodsoiomwaasl’corefgoihclsoeeotpeosmkieevrnmums-nces[eueu2rtiariamianetl8,rlnohtcat,ed,widun2icerpwl.dui9rahlitame]eemIrryhic.taliteicaetaedTatucytunecdghehuhttmddjiteqoisealeoeieuidrcurcngzlnteeaoit,leegemciannbimcosootttttutniemghtiihenrstodhnetwaaotaenheisteottfit.iioerenrsitvmnyosdrhaieomol-ntsotpbuhtrvhhicoiaoareilneoiespasisrnngseriailbgficdtannsitelcrchiyiﬂtoeimtgaolodiusondetvtuiediueeleeoa[arnaodl3tnept.reci0sewipsDecfd,]tcot.ylvihieuiiontrWoeitnhiefstetndnouuhicatttlthiatteoohcothiolecoiflgetviroumnhtmsyeeowdmt.eguaipaaeHnaotuelgtnerttexroleihdfdacepeprwsrsttcaslsloieceetoemotioudiomnvsnmvngeite,tiveptshahyrstarel,utheeoreiritnaoaeode,fhfrlir-enbecinesmsmSavuu,.gotLpectaruafvrolAoTtigortectamihehMenphnirseesst----tframBeanseeeddosntothbee acboomvpeaarneadlyasnids, cwaelcucolamtepdrewheitnhsiavllelpyrecvoinosuidsefrreadmgees,omwhetircyh-breaqseudireasnda fleaargtueraems-boausnetdomf ceathlcoudlas,tiaonnd, amnaddiet fwulilllubsee ionfvvailsiudafloarnadfpeoaitnutrec’lsouredpseitnitfiovremeantivoinro. nAmloeonpt, ci.leo.s, uthree ddeectoecratitoionnmoef tmhoudltiuptlieliazdinjagcevnisturoaol mfeastiunraeshiosteplr. eDseunetteodthine Fexigpuloresiv2.eDdOev-eLlFoApmoeunttpouf ctsomdaptuat(eprovsies,iopnoianntdcliomuadgse, arnecdoigmnaitgioen) acfotgernitthiveekteeychfrnaomloegpyrienprreocceensstiynega,rasn, dcopmreplaimredintoartyhecafneadtiudraetse’fsriammielasrwityerdeeotbectatiionnedwbiythropuoginhtdceloteucdtiso,nvibsausaeldimonaggeesomcoentrtaicinininfogrvmaartiioouns, sfeuacthuraesstahree dmisotraenmceatoufrtehaenmd orotibounsttrianjeloctoopryc,loasnudrethdeentecthtieons.uHspoewcteevderl,otohpe fproaimntesclwouedres ocabntapinroedvidthermouogrehatchceurBaoteWqsuasnimtitialatirviteyv. eFriinﬁaclaltyi,onthfeorptohienltocolpouthdrsoureg-hmraet-cmhaintcghiwngasbacsoenddouncttheeditmoavgeerisfiymtihlaersituyspdeectetecdtiolono. p closure.
+Based on the above analysis, we comprehensively considered geometry-based and features-based methods, and made full use of visual and point clouds information. A loop closure detection method utilizing visual features is presented in Figure 2. DO-LFA outputs
+
+Remote Sens. 2021, 13, 2720
+
+6 of 29
+
+data (pose, point clouds, and image) after the key frame preprocessing, and preliminary emote Sens. 2021, 13, x FOR PEER REVcIaEnWdidate frames were obtained by rough detection based on geometric information, such
+as the distance of the motion trajectory, and then the suspected loop frames were obtained through the BoWs similarity. Finally, the point clouds re-matching was conducted to verify the suspected loop closure.
+
+Figure 2. Flow-chart of the loop closure detection.
+FigurTeh2e. gFeloomwe-tcrhicarrotuogfhthdeetleoctoiopncwloassubraesdedetoencttihoenp. ose or odometry output by the
+DO-LFA, wherein we selected the preliminary candidate frames from the historical key
+framTeshaendgmeoamtcheetdriwcitrhotuhegchudrreentet fcrtaimoentwo caasrrby aouset ldooopncltohsuerpe doesteecotirono.dTohemreeatrrey outpu LtcFhirArcele,ewtrhardheiseuhrsoe)loidnfjkuwedygemfrsaeemnlteecscotwnedadistiltoehnsses t(phFairgneultriheme3t)ih:nr(ea1s)rhwyohlcdeanrnatnhdgeieds,eaiattrmcehifgarhraetmabeteharsepfsohrtooelnmdtidat1lhl(oeroehdpistoric ancldosumreaftrcamhe;d(2w) thitehintehrevacl uthrrreeshnotldfrda2mmuestobecgarreartyerothuatnltohoe pthrcelsohosludr; eande(3t)etchteion. Th thrirnegslhenogldthjtuhrdegshmoledndt3csohonudlditbioengrse(aFteirgtuharnet3h)e:t(h1r)eswhohlde.nTthheekesyefarracmhesatrheaat mthereteshold rapthdreoicuaebssos)vinoegfc.oknedyitiofnras mweeres swavaeds ales spsretlihmainnartyhceanthdirdeastehloolodp crlaosnugreef,riatmmesifgorhfturbtheear poten sure frame; (2) the interval threshold d2 must be greater than the threshold ring length threshold d3 should be greater than the threshold. The key fram the above conditions were saved as preliminary candidate loop closure fram processing.
+
+Remote Sens. 2021, 13, 2720
+
+threshold judgment conditions (Figure 3): (1) when the search area threshold d1 (r radius) of key frames was less than the threshold range, it might be a potential sure frame; (2) the interval threshold d2 must be greater than the threshold; an ring length threshold d3 should be greater than the threshold. The key frames t the above conditions were saved as preliminary candidate loop closur7eoff2r9ames fo processing.
+
+FFigiugruer3e. T3h. rTehshroelsdhsofoldr sgefoomr egtreyormouegthrydertoeuctgiohn.detection.
+
+22.2..21..1V. iVsuiasluBaOl WBOSiWmilSairmityilarity
+The bag of words (BoW) model [32,33] originated from the ﬁelds of information
+retrievaTlhanedbtaegxt oclfaswsiﬁocradtison(B, aonWd i)s mnoowdwelid[e3l2y,u3s3e]doinritghienraetceodgnfitrionmofthviesufaiel limdsagoefs inform
+
+atnrdielvoaopl acnlodsutreexdtectleacstisoinfiicnatSiLoAnM, a.nTdheisgennoewralwidiedaeilsytousuesedki-nmtehaensreocr okg-mneitainosn++of visua toanpderfloorompcclulostseurraenadleytseisctbiaosnedinonSiLmAaMge.feTahtueregepnoienrtas,l ii.de.e, aSUisRFtoour sOeRkB-tmo eoabntasinor k-me
+a “word” vector composed of ID numbers and weights. A K-d tree, with k branch and
+
+d depth, is utilized to express the vectors as a dictionary; then the image is described
+
+according to the statistical histogram of the word, and ﬁnally the similarity is calculated
+
+for judgment.
+
+The dictionary training is regarded as an unsupervised classiﬁcation process. Similar
+
+to many models in the ﬁeld of deep learning, the sample size and scale directly affect the
+
+effectiveness of the model. Training a large dictionary may require a machine with large
+
+memory and high performance, and it will take a long time. Here, we utilized a large
+
+dictionary that is widely used by the open-source community. It is trained from about
+
+2900 images. The size of the dictionary is k = 10 and d = 5, that is, up to 10,000 words. The
+
+program uses the open-source library DBOW3 (https://github.com/rmsalinas/DBow3,
+
+accessed on 7 June 2021) to assist the implementation.
+
+With the dictionary, the corresponding word wj of the speciﬁc features can be retrieved. After obtaining the N features of an image and the corresponding words, it is equivalent
+
+to obtaining the histogram of the distribution of the image in the dictionary. However,
+
+considering the different importance of different words in distinguishability, they are often
+
+weighted, similar to the method in text retrieval, which is called term frequency-inverse
+
+document frequency (TF-IDF) [34,35]. TF refers to the frequency of a word in a single image.
+
+The higher the frequency of a word in the image, the higher the degree of discrimination.
+
+Assuming an image I, the word wi appears mi times, the total amount of the occur-
+
+rences of all words is m, where:
+
+TFi
+
+=
+
+mi m
+
+(1)
+
+In addition, when the BoW model is established, assuming that the number of all
+
+features in the dictionary is n, and the number of features in a leaf node wi is ni, the IDF of
+
+the word is deﬁned as:
+
+IDFi
+
+=
+
+log
+
+n ni
+
+(2)
+
+Then, the weight of wi is the product of TF and IDF
+
+ηi = TFi × IDFi
+
+(3)
+
+For image A, its multiple feature points retrieve multiple words in the dictionary. Considering the weight, the BoW vector constituting the image is written as:
+
+A = {(w1, η1), (w2, η2), · · · , (wN, ηN)} vA
+
+(4)
+
+The number of words in the dictionary is often very large, and there may be only some features and words in the image, and, thus, it will be a sparse vector with a large number
+
+Remote Sens. 2021, 13, 2720
+
+8 of 29
+
+of zero values. The non-zero part of vA describes words corresponding to the features in image A, and the values of non-zero parts are the TF-IDF values.
+Therefore, assuming two images A and B, their BoWs vectors vA and vB can be obtained. There are multiple representation methods for similarity calculation. Here, we chose the L1 norm to measure their similarity, and the result value falls within the interval (0, 1). If the images are exactly the same, the result is 1, and the similarity calculation is presented as [36]:
+
+s(vA
+
+−
+
+vB)
+
+=
+
+1−
+
+1 2
+
+vA − vB |vA| |vB|
+
+=
+
+∑ 1
+2
+
+N i=1
+
+(|v
+
+Ai
+
+|
+
++
+
+|vBi
+
+|
+
+−
+
+|v
+
+Ai
+
+− vBi|)
+
+(5)
+
+In the loop closure detection phase, we calculated the BoW similarity between the current frame and all the candidate frames. The frames with similarity less than 0.05 were directly eliminated, and the rest of the suspected loop closure frames were sorted according to the similarity values, from high to low, and processed in the following step for further veriﬁcation.
+
+2.2.2. Loop Closure Detection Verifying and Its Accuracy
+In order to verify the suspected loop closure frames, we matched the current frame and the suspected loop frames one by one in the sorted order, and counted the Euclidean ﬁtness score for each match. The Euclidean consistency score is the mean value of the square of the distance from the source point clouds to the target point clouds. Corresponding points exceeding a certain threshold are not considered in the calculation. If the score is lower than the threshold (0.2 m), then this frame is the ﬁnal loop closure frame of the current frame, and the matched relative pose is utilized as a constraint for subsequent pose map optimization.
+When detecting the loop closure, there are usually four conditions, which are summarized in the Table 1: true positive (TP), false positive (False Positive, FP), true negative (TN), and false negative (FN). True positives mean that the frame is a loop closure frame; while true negatives mean that the frame is not a loop frame. False positives mean the frame is not a loop closure, but the algorithm judged it to be one; while false negatives mean that the frame is a loop closure, but the algorithm judged it not to be.
+
+Table 1. Loop closure detection examples.
+
+Detection Results Reference
+True False
+
+True
+True Positive False Negative
+
+False
+False Positive True Negative
+
+In our results, we hoped that TP and TN would appear as much as possible, whereas we hoped that FP and FN would appear as little as possible or not at all. For a certain loop detection algorithm, the frequency of occurrence of TP, TN, FP, and FN on a certain sample data can be counted, and the accuracy (precision) and recall rate (recall) can be calculated:
+
+Accuracy(%)
+
+=
+
+TP TP + FP
+
+(6)
+
+Recall(%)
+
+=
+
+TP TP + FN
+
+(7)
+
+3. Global Graph Optimization 3.1. Global Pose Construction
+Compared with the back-end GGO, the motion trajectory obtained by the DO-LFA is, broadly speaking, referred to as a front-end odometer. It mainly utilizes the point clouds matching between the current frame and adjacent or local multi-frames to estimate the
+
+Remote Sens. 2021, 13, 2720
+
+9 of 29
+
+Remote Sens. 2021, 13, x FOR PEER REVcIuErWrent pose. These point clouds and their features may also be referred to as land9moaf r2k7s. While different from the visual SLAM, the direct method and abovementioned point
+clouds match method both ﬁx the connection relationship and then solve the Euclidean
+transformation. In other words, DO-LFA does not optimize the landmarks, and only solves for tAhse tpimoseeancocduem. ulates, the trajectory of the platform will become longer, and the scale of the Amsatpimweilalcccounmtiunluaetetso, tghreotwra.jeScintocreytohfetshceapnlnaitnfogrsmpawceillobfeLcioDmAeRloinsgaelrw, aanysd ltihmeitsecdal,e thoef tshcaelemoafppwoilnltccolnotuinduseotrorgoarodws.igSninscceatnhneostcgarnonwinigndspeaficneitoeflyLiwDiAthRthiseamlwaapy, sanlidmittheed, cothnestsrcaainlet oref lpatoiionntschliopudbsetowrereonadthseigcnusrrceanntnofrtagmroewaninddeeaﬁrnliietrelyhiwstoitrhictahledmataap,maanyd nthoe locnognesrtraexinisttr.eIlnatiaodndshitiponb,etwheereenatrhee ecrurrorresntinfradmirecatnmd eetahrolidermhiasttcohrincagl danatda fmeatyunreo ploonignetr meextihsot.dInopatdimditziaotnio, nth. eTrheeacruemerurloartsivienedrriroercstombteatihnoed mbyaDtcOhi-nLgFAanwdilflebaetucorempeolianrtgmer,eathnodd
+thoepitnimcoinzasitsiotenn.cyThoef tchuemgulolabtailvme aerprowrisllobbetcaoinmeedmbyorDe Oob-vLiFoAusw. ill become larger, and the
+incoInsoisrtdeenrcytooifmthperogvleobthalempoaspewacilclubreaccoymoef tmheorkeeoybfvraiomues.nodes and ensure the quality
+of the Ignloobradlepr otoinitmcploruodvse mthaepp,owse accacnusraavcye tohfethtreakjeecytofrryamofetnhoedDeOs a-LnFdAenasnudrecothnestqrucatliaty
+baocfkth-eengdlogbloabl aplominatpclooputdims mizatpio, nwteocraendsuacveeththeecutrmajueclatotirvyeoefrrthoersD. TOh-eLgFAlobaanldpcoosnesgtraupctha
+ubtialiczke-senthdegploobsaelomf athpeokpetiymfirzaamtioenastothreednuocdeet,haencdumthuelarteilvaetievreromrso.tTiohne bgelotwbaelepnotsheegtrwapoh
+puostielinzeosdtehs,eopbotsaeinoefdthbey ktheye pfroaimntecalosuthdes nmoadtech, ainngd, tisheemreplalotiyveedmaosttihoen cboentwsteraeinntheedgtwe.o Tphoesneonnoldineesa,robletaasitnesdqubayretsheadpjouisnttmcelonut dmsemthaotdchiisngu,seisdetmo psloolyvedthaes tphreobcolenmstrtaoinotbetadigne. bTethternroesnulilntse.ar least squares adjustment method is used to solve the problem to obtain
+bettFeirgruerseul4tsv. isually introduces the process of constructing a pose graph, where the arrow isFtihgeurpeo4seviasnudalltyheinbtrloudeudcaesshtehde plirnoeceisssthoef cmonostitoruncttrinajgecatoproys.eFgirgauprhe, 4wahperreestehnetsartrhoew DiOs t-hLeFpAo,swe hanerdeththeeblrueeddcairschleedmlianye ibsethuenmdeortsiotonotdraajesctoovrey.rlFaipgpuirneg4appoirnestecnlotsutdhse oDrOr-oLaFdA, siwgnhserfeorthmeartcehdincigr.cTlehme garyeebne luinnedreerpstroeosednatsstohveecrolanpstprianingtpboeitnwtecelnoutwdsooardrjaocaedntsifgranms efosr ofmDaOtch. Tinhge. gTrheeengraenedn rleindelirneepsretsoegnettshethrerecpornessternaitntthbeectuwrereennttwfraomaedjaancdenctofnrastmraeisntosf bDeO- . twTheeenghreisetnoraicnadl, rleodcallindeastat.oIgnetthheerkreeypfrreasmenetstchreeecnuirnrge,ntthferapmoseeannoddecsonarsetrraeindtuscbedet,waneedn thheisttroarjeiccatol,rlyoocaf lthdeatDa.OI-nLFtAheiskereysefrravmede asscrteheencionngs, ttrhaeinpt oesdegenobdeetws eaerne rthedeuacdejadc,eanntdkethye frtarmajeecptoorsye nofodthees. DFiOgu-LreFA4bisprreesseenrvtsedtheasprthepeacroendsftrraaminetsefdogreloboeptwcleoesnurtehedeatdecjaticoenntankdey glforabmaleppoosseegnraopdheso. pFtiigmuirzea4tibonp.reFsiegnutrset4hcepprreespeanrtesdthfrealmooeps fdoertleocotiponclopsruocreesdse, twechteiorentahned grgeloenbaalrproowse rgerparpehseonptstimthiezactuiorrne.nFtifgruarmee4cbepirnegsepnrtosctehseselodo, pthdeerteedctidoanshperdocleinsse, iwnhdeicraettehse thgarteethnealroroopwcrleopsurerseefnrtasmtheeiscuforurenndt farnadmceobnesitnitgutpersoacelsosoepd,,atnhde rtehde dgraesehneddalisnheedinldiniceatiess ththealot othpecloonosptrcalionstuerdegfreaamfteerispfooiunnt dclaonuddscoren-smtiatutcthesinagl.oFoipg,uarend4dthpergesreenentsdtahsehreedsulilnt eofis ththeeoplotoimpiczoantisotnraoinf ttheedggleoabfatlepr opsoeingtracplohu.dTshreep-mosaetcnhoidnegs. aFnigdumreo4tidonprterasejencttsorthiees raerseuoltpo- f titmheizoedp,titmheizmatoiotinonoftrtahjeecgtolorybafol rpmosseagcroamphp.leTtehleooppo,seanndodthees paonidntmclootuiodns tcroanjescistoterniecsyaisre imopptriomviezde.d, the motion trajectory forms a complete loop, and the point clouds consistency
+is improved.
+
+Figure 4. Pose graph construction: (a) DO-LFA nodes and landmarks; (b) key frames pose node and Ficgounrsetr4a.inPtoesdeggersa;p(hc)cpornosgtrreuscstioofnt:h(ea)pDosOe-cLlFosAurneoddeetseactnidonl;aannddm(adr)kgs;lo(bba) lkpeoysferaompteims pizoasteionnordeesults. and constraint edges; (c) progress of the pose closure detection; and (d) global pose optimization results.
+3.2. Globe Pose Graph Optimization
+In the graph optimization theory, the node denotes the pose of the key frame, which
+is represented by ξ1,,ξn . The edge denotes the relative motion estimation between two
+pose nodes. The ordinary edge comes from the direct method or point clouds matching in
+
+Remote Sens. 2021, 13, 2720
+
+10 of 29
+
+3.2. Globe Pose Graph Optimization
+In the graph optimization theory, the node denotes the pose of the key frame, which is represented by ξ1, · · · , ξn. The edge denotes the relative motion estimation between two pose nodes. The ordinary edge comes from the direct method or point clouds matching in the DO-LFA, and the loop edge comes from the rematch of the point clouds during loop closure detection. The relative motion, ∆ξij, between ξi and ξj nodes can be expressed as:
+
+∆ξij = ξi−1·ξj = ln exp (−ξi)∧
+
+exp
+
+ξ
+
+∧ j
+
+∨
+
+(8)
+
+The corresponding relation of Lie group and Lie algebra is T = exp(ξ∧), and it can be
+
+written with Lie group:
+
+∆Tij = Ti−1Tj
+
+(9)
+
+From the perspective of the construction process of the pose graph, especially after the loop edge is added, the above formula will not be accurately established.
+We regarded the edge constraint as the measured value, and the node pose as the estimated value, and, thus, moved the left side of the above formula to the right side, deriving the error equation:
+
+eij = ln
+
+∆ Ti j −1 Ti −1 Tj
+
+∨
+= ln
+
+exp
+
+−ξij ∧ exp (−ξi)∧ exp ξj∧
+
+∨
+
+(10)
+
+where ξi and ξj are the variables expected to be estimated. We used Lie algebra to ﬁnd the derivative of these two variables, adding a disturbance to the ξi and ξj, wherein the error equation can be re-written as:
+
+eˆij = ln ∆Tij−1Ti−1 exp (−δξi)∧ exp δξj∧ Tj ∨
+
+(11)
+
+In order to derive the linearization of the Taylor series expansion of the above formula, we introduced the adjoint property of SE (3):
+
+T exp ξ∧ T−1 = exp (Ad(T)ξ)∧
+
+(12)
+
+Ad(T) =
+
+R t∧R 0R
+
+(13)
+
+Equation (12) is re-written as:
+
+eˆij = ln ∆Tij−1Ti−1 exp (−δξi)∧
+
+exp
+
+δξ
+
+∧ j
+
+Tj
+
+∨
+
+= ln ∆Tij−1Ti−1Tj exp −Ad Tj−1 δξi ∧ exp Ad Tj−1 δξj ∧ ∨
+
+≈ ln ∆Tij−1Ti−1Tj I − Ad Tj−1 δξi ∧ + Ad Tj−1 δξj ∧ ∨
+
+(14)
+
+≈
+
+eij
+
++
+
+∂eij ∂δξi
+
+δξi
+
++
+
+∂eij
+∂δξj δξj
+
+The Jacobi matrix calculation is written as:
+
+∂eij ∂δξi
+
+= −Jr−1
+
+eij
+
+Ad
+
+Tj −1
+
+(15)
+
+∂eij = Jr−1 eij Ad Tj−1
+
+(16)
+
+∂δξj
+
+Jr−1 eij
+
+≈
+
+I
+
++
+
+1 2
+
+φe ∧ 0
+
+ρe∧ φe∧
+
+(17)
+
+Remote Sens. 2021, 13, 2720
+
+Assuming C denotes the set of all edges in the pose graph, the cost function o nonlinear least optimization is written as:
+
+ F (ξ )
+
+=
+
+1 2
+
+<i, j >∈C
+
+eijT
+
+Ω
+
+ij
+
+e-1 ij
+
+11 of 29
+
+ξ ∗ = arg min F (ξ )
+The optimization of the graph is essentially thXe least squares optimization. Each pose converter is an optimization variable. The perceptual constraint between poses is an edge,
+whearned aΩll podsenboasteelsineths eanidncfoonrsmtraitniot endgmesattorgixethuesrefdormtoaddeisspclraicbeme etnhtemmapa.tching errors of
+point clAosusdusm.inWghCednenthoetesntuhme sbeet rofoafllneoddgeessinretahcehpeossethgreapshe,ttvhealcuoest, ftuhnectaiobnoovfethceost func cannboenlisnoelavreledasbtyoptthimeizGaatiuonssis-Nweriwttetnonas:method or LM method, etc. Open-source libra
+
+i.e., Ceres or g2o, also provideF(sξo)m=e21s<oi,∑lj>u∈tCioenijTmΩiej−th1eoijds for graph optimizati(o18n).
+
+4. Experiments and Results
+
+ξ∗ = argmin F(ξ)
+
+(19)
+
+4.1. KITTI Dataset
+
+X
+
+4.1.w1.hDeraetΩasdeetnDoteessctrhiepitnifoonrmation matrix used to describe the matching errors of the point
+clouds. When the number of nodes reaches the set value, the above cost function can be
+soWlveitdhbyththeeaGimausos-fNqeuwatolintamtievtheoldy oervLaMlumateitnhogdt,hetec.pOeprefno-rsmouarncecleiborafritehse, i.pe.r, oCperoessed met we oermgp2ol,oaylseodptrhoveidoepseonm-seosuolructeionKmITeTthIoddas tfaorsegtrafpohr otepstitminizga.tiTonh.e KITTI data acquisition
+
+form and the sensors used are shown in Figure 5. The left camera, a Point Grey Flea2 ( 14S344..C1E.-xKCpI)eT,rTiwmI DaeansttaissneastntdalRleedsualtts Cam2. This camera, a classic colorful industrial camera f Poin4.t1.G1.rDeyat,aCseat nDaedscari,phtiaosn1.4 million pixels, a global shutter, and an acquisition frequ
+
+of 10 HZW.itThhtheereaimweorf equaaltiotattaivleolyf esveavlueantisnegqthueepnecrefosrmwainthceloofotphespinropthoseed11mseethqoude, nwcees: #00,
+
+#06,em#0p7lo, y#e0d2t,h#e0o8p,eann-sdou#rc0e9K. IWTTeI dteastatesedt faolrlttehsteindg.aTtahefrKoITmTItdhaetsaeacsqeuviesintiosneqpluaetfnorcmes. Some
+
+poratanndtthtehsreensshoorslduspedaraaremsheotewrnsiunsFeigdurien5t.hTeheexlepftecraimmeeran,tawPoeirnet GseretyaFslefao2ll(oFLw2-s1:4S3C-
+
+C(),1w) aTshinestdailsletdanact eCaamn2d. Tanhigslceamtherreas, ha oclladsssicfocrolokrefyul finradmusetrisael lceacmtieorna fwromerePo1in0t m and
+
+respGHerZce.tyiT,vCheealrnyea;wdae,rheaast1o.t4almoifllsioevnepnixseelqsu, aengcleosbawlisthhulottoepr,sainndthaen
+
+acquisition frequency of 10 11 sequences: #00, #05, #06,
+
+#0(72,)#0T2h, e#0t8h, arnedsh#o09ld. Ws edt1e,stded2,aallnthde dda3t,afforormgtehoemseesterviecnrsoeuqugehncdese.tSeocmtioe nim, pwoertraent20 m, 5
+
+andth1r0e0shmold, rpeasrpamecettievrseluys.ed in the experiment were set as follows:
+
+(a)
+
+(b)
+
+(c)
+
+Figure 5F. iKguIrTeT5I. KdIaTtTaIcdoaltlaecotilnlegctipnlgaptfloatrfmorm: (:a()a)ppoossiittionnrreelaltaitoinosnhsiphiopf tohfe tinhsetailnlesdtaslelnesdorsse; (nbs)oVresl;od(by)neVHelDoLd-y64nLeiDHADRL; -64 LiDAR; and the (acn)dPthoein(ct)GPorienyt GFrleeyaF2le(aF2L(2F-L124-S143SC3C-C-C))ccoolloorrffuullccaammerear, ain,sitnalsletadlilnedthienCtahme2Cpaosmiti2onpoins(iati)o. n in (a).
+(1) The distance and angle thresholds for key frame selection were 10 m and 10◦, respectively;
+(2) The thresholds d1, d2, and d3, for geometric rough detection, were 20 m, 50 m, and 100 m, respectively.
+
+4.1.2. Results Analysis
+In the experiment, all seven sequences with loops were employed in the tests, and all the results with GGO (DO-LFA-GGO) and without GGO (DO-LFA) were saved for analyzing the position accuracy. According to the collection environment, we divided these seven sequences into three categories for analysis and discussion. Sequence #00 and #05 were classiﬁed as group A, sequence #06 and #07 were classiﬁed as group B, and sequence #02, #09, and #08 were classiﬁed as group C; the experimental results are listed in Table 2
+
+Remote Sens. 2021, 13, 2720
+
+12 of 29
+
+Group A B C
+
+and presented in Figures 6–8, respectively. The trajectory, loop position, and cumulative position error (CPE) of each group of data are presented.
+
+Table 2. KITTI data loop closure detection and global graph optimization (GGO) results.
+
+Sequences Environment
+
+#00
+
+Urban
+
+#05
+
+#06 Urban
+#07
+
+#02 Urban +
+
+#09
+
+Rural
+
+#08
+
+Distance (m)
+3723 2205 1232 694 5067 1705 3222
+
+Amount of Detected Loop
+Closure 15 7 6 1 3 1 0
+
+Accuracy (%)
+
+Errors before GGO (m)
+
+100% 100% 100% 100% 100% 100%
+-
+
+6.71 14.27 0.26 0.29 8.76 0.23
+-
+
+Errors after GGO (m)
+0.12 0.36 0.27 0.21 0.13 0.09
+-
+
+Group A and group B were both urban environments, including urban roads, many loops, and many regular buildings, and the perceived structure of the environment was better. Group C, on the other hand, was a mixed urban and rural environment with twists and turns in the rural roads. There were few loops and relatively few buildings. Farmland without references existed in this group, and the structure of the perceived environment was poor. The basis for the separation of group A and B was that the DO-LFA accuracy of group A was poor before GGO operation and the accuracy improvement effect was obvious after GGO, whereas the DO-LFA of group B achieved high accuracy and the optimization effect was not obvious.
+In the following Figures 6–8, the white line denotes the GPS/INS reference trajectory, the green line denotes the trajectory of DO-LFA without GGO, and the blue line denotes the trajectory of DO-LFA with GGO (DO-LFA-GGO). Parts of the trajectories overlap, therefore, it seems that there is only one color for the overlapped trajectories. The red squares mark the detailed position of the loop in the trajectory. Combining with the trajectory and motion details, the counted number of loops was utilized to conﬁrm whether the loop was correct. Moreover, the cumulative position errors with and without GGO are also presented in these ﬁgures.
+Trajectory, loop closure location, and the CPE values of group A (#00 and #05) are presented in Figure 6. The environment of sequence #00 and #05 was a well-structured town, the time length of the sequence was comparatively long, and the movement distance was long, in excess of 2 km. In total, 15 loop closures were detected in sequence #00, while seven were detected in sequence #05. These loop closures were evenly distributed on the trajectory at an interval of 50 m, which is almost identical to the inter-loop threshold for loop closure detection. The loop closure detection accuracy showed that the accuracy rate reached 100%. The CPE of the DO-LFA of the two sequences were large, reaching 6.71 m and 14.27 m, respectively, and dropped to 0.12 m and 0.36 m, respectively, after GGO. The trajectory of DO-LFA-GGO was also closer than DO-LFA to the true trajectory, which indicated that GGO achieved the expected effect and the CPE was basically eliminated.
+
+Remote Sens. 2021, 13, 2720 ote Sens. 2021, 13, x FOR PEER REVIEW
+
+13 of 27
+
+13 of 29
+
+(a)
+(b) Figure 6. ExpFeigriumreen6t.aElxrpeesruimltsenfrtoalmregsuroltuspfroAm: (gar)oturpajeAc:to(ar)y,trlaojeocptocrlyo,sluoroep, calnodsupreo,saitnidonpoesrirtoiorsn feorrrosresqfuorence #00; and (b) trajectory, lsoeoqpuecnlocseu#r0e0,;aannddp(bos)ittriaojnecetrorroyr,slofoorpscelqousuenrec,ea#n0d5.position errors for sequence #05.
+
+Remote Sens. 2021, 13, 2720
+
+reference trajectory. After GGO operation, the trajectories and the CPE values did not ha any obvious changes, which indicated that the GGO process did not pose any negat influence on the DO-LFA results and that the CPE was still kept small after the GGO o eration. The environment of sequence #06 and #07 was a well-structured town, and th scanning time and movement distances were shorter than group A sequen1c4eosf 2.9Therefo the DO-LFA performed well and the GGO did not effectively reduce the errors.
+
+(a)
+Figure 7. Cont.
+
+mote Sens. 2021, 13, x FOR PEER REVIEW
+Remote Sens. 2021, 13, 2720
+
+15 of 29
+
+15 of
+
+(b)
+Figure 7. EFxigpuerreim7. eEnxptaerlirmeesnutlatlsrefsruolmts ftrhome gthroe ugrpouBp: B(a: )(at)rtarjaejeccttoorry,,llooooppclcolsousrue,raen,dapnodsiptioonsietrioronrsefrorrosresqufoenrcsee#q0u6;eanncde(#b0) 6; and (b) trajectory,tlroajoecptocrlyo, slouorpe,claonsudrep, oansditipoonsiteiorrnoerrsrofrosrfosresqeuqueennccee #077..
+TphreeseTenrntaevjdeicritononrFymi,glueornoept7s.colIonfsgtuhrrieosuptrpoasjeiCtcitoosner,yq,ausniedxnltochoeepsC(c#Plo0Es2uo,rfe#sg0rw9o,euarpenBddedt#ea0ct8tae)d(#wi0ne6sraeenqmdue#on0rc7ee)#ca0or6em, plicat Theirwthrialejescetqoureinecse, #l0o7ohpadcolonslyuorneeplooospitciloosnusr,e,awnhdicchuwmasulloactaitvede apt othseiteinodnofetrhreotrracjeacltcouryl.ations a preseTnhteedmoinst Fimigpuorrtean8t.ﬁMndainngywoafstthaetpthaetChPsEfrvoamluetshoef tsheeqDuOe-nLcFeAsfo#r0t2h,e#se0t9w, oansedqu#e0n8cews ere in t countwryerseidsmeawll iatnhdwlesisntdhianng30rocmadasn,dbtehneidr str,afjeecwtorlioesoaplmcolostsuovreersla, papnedd wreilthattihveerleyfefreenwcebuildin Theretorbwavjeiaocstuosfracyhr. maAnlgfateensr,dwGwGhiOcithhoinopdueirtcaatrtieeodfne,trhtehantetchtereaoGjebcGtjOeocrpitesrsoocaennsdstdhthiedegnCorPot Epuonvsaedlauanenys dndeitdghanetiovstethrinuaﬂvcueteuanrnceye of the e vironomnethnet DwOe-rLeFAporeosru.lts and that the CPE was still kept small after the GGO operation. The
+Tenhveircoonmlleecntioofnseeqnuvenircoe n#0m6 eanndt #o0f7sweqasuaewnceell-#st0ru2cwturaesdatorwunr,aalnrdotahdeirwsciathnncinognttiimneuous lar turns. There was no loop closure for a long time in the early stage, and only three lo closures were successfully detected during the second half of the trajectory. The CPE v ues before and after GGO were 8.76 m and 0.13 m, respectively, which showed that t GGO reduced the sequence #02 CPE values. However, we observed that the position
+
+Remote Sens. 2021, 13, 2720
+
+16 of 29
+
+Remote Sens. 2021, 13, x FOR PEER REVIEW
+
+16 of 27
+
+and movement distances were shorter than group A sequences. Therefore, the DO-LFA
+
+performed well and the GGO did not effectively reduce the errors.
+
+The environments of group C sequences (#02, #09, and #08) were more complicated. TthheeiDr tOra-LjeFcAtowrieitsh, laonodpwcliothsuouret GpoGsOitiownesr,ea4n.2d7cmumaundlat0i.v0e9 pmo,sriteisopnecetrirvoerlyc,aalcnudlathtieondse-are pcrreesaesnetiendthine CFiPgEurined8i.cMateadnythoaft tthhee GpaGtOhseffrfoecmtivtheleysuetqiluizeendceths e#0d2e,te#c0t9e,dalnodop#0cl8owsuerreeainndthe TcetcbrfctrtfulonehihoiaeoomrrufvdrteeussnoemrnituruenrrseeT,twtrcoeTet.iretrewhmdnwhyhaTaysdemesesensehwacirtlc.ds0tdeusieheroeTge%rnreeaarqflh2ehvtlvea.fuC-wetuetwre3wlTsceeyPsmliauhtnra,ateEdinwhctceclorsGhiadcteevrnouwmenneGea#lrpsaocdievsl0iaOsmolutnneif8iiloelnuewodoviiowwetrsnnloiioe.rin.lrnetyeipdtpoSovnhegraifdniergloccsmrormtmeollou8haooootinn.tsnleeaspes7amucgudonfriv6rtnoerlfrsteeeetemrgfe,pohdnoeobtaoimtffrshcdfaroeesiesleentnuiinnreqehgtadcridlcquadhesooile,nsuueut0nosl,nbgdoe.earop1feucinnncebetnr3eccdthscgwrjgoleoemo#enotuctr0troosl#siht,sn2osmuwes0erlc,taocro2eanetofefloposhtonoswnnepipdeorcnrawdeaepltttcntochhtsrtahhledctahsoiesaieaclsujevsoevtlaGgurrpficeslieouerstrluolhGalonysoeorarfer,,raOuegnwctlfyawlhyanoe;wonraiwestmdhmloshds,autitiaptseceratdarhrdhahnelognleeeeojooplteedwtwsnaeurenc,phoctglttia.atoiyottoah-svlenhstwdorodeeeitdyotschprle.eypsoamawpodTttnntrnfocohedtceutltslhreioothwyicnehttasneCtheuauttrutb,ehPsetiortrnwuegehrEoruecueiuefehpsloveocoldtienGaaalhucfliarrdlhloensG-lu,rtohggeOpsees. rseedruiocuesdlythafefescetqeudetnhceein#t0e2rpCrPetEatvioanluoefss.imHiolawreitvyedr,uwrinegolbosoeprvcelodsuthreatdtehteecptioosni,tieosnpeecriraollrys of tfhoer ﬁimrsatgheaslifmwilearreitlya.rWgeirththouant tthheolsoeoopfctlhoesusreec,othnedGhGalOf dcuoeultdhenofatcbtethcaartrtiehderoeuwt, aasndnothloeop ctlroasjeucrteosrydewteitchteodr iwnitthhoeuﬁtrGstGpOarwt oafs tthhee tsraamjeec.tory.
+
+(a) Figure 8. Cont.
+
+Remote Sens. 2021, 13, 2720 Remote Sens. 2021, 13, x FOR PEER REVIEW
+
+17 of 29 17 of 27
+
+(b)
+(c) Figure 8. Experimental results from group C: (a) trajectory, loop closure, and position errors for sequence #02; (b) trajectory, loop closure, and position errors for sequence #09; and (c) trajectory, loop closure, and position errors for sequence #08.
+
+Remote Sens. 2021, 13, 2720
+
+18 of 29
+
+The environment of sequence #09 also contained a number of consecutive rural roads
+Remote Sens. 2021, 13, x FOR PEER REVIEWwith large turns. There was also no loop closure in the early stage of the tra1je8cotof r2y7, and there was only one detected loop closure at the end of the trajectory. The CPE values of the
+DO-LFA with and without GGO were 4.27 m and 0.09 m, respectively, and the decrease in
+the CPE indicated that the GGO effectively utilized the detected loop closure and reduced slFoeiogqpuurectsenlhloci8esge.uhC#Ert0exPl2,ypE;aewn(rbvdiom)arpltesuroneaesjtiesiatnc.ilotSrotneerismryeumr, rliltlososaroorsfprfftooopcmrloosssesgeiuqqtrirouuoeuee,npnnaecncCeredr:#o#p0(ra08os).2sait,trfitatohejneercetttohrrrraeoyjer,GsclGotfoooOrrpy;sctewlhqoeusituelhonroenc,uegat-#nt0ledo9r;ompaponsccdioltoin(ocstn)iunterruerarojopeucrestsrocffroooyrru, mnterdy
+curve and limited looping might account for this phenomenon.
+4.2. WHUTKhyelinseBqauceknpcaeck#E08xpeenrivmireonntment included towns and villages, the roads were regular, there were 2-3 actual loop closure areas, but no loop closure was detected and the recall
+4.2.1.rDataetawseats D0%es.cTrihpetiomnain reason for the loop closure detection failure was that the second Ttihmeem, thajeotrrasvenelsodrisreocftiothneoWf tHheUveKhyiclilne dbuacrkinpgacthkeilnocolupdcelods:uVrelwodaysnoeppVoLsPit-e16toLtihdaatro, f the
+MynaﬁkrsDt t1i0m0e0.-ITRh-u12s,0thcoelovriebwininogcualnagrlecaomf tehrae,sXensesonrs-s3c0a0nIwMaUs ,aalsnodcoamppowleteerlycoomppmousintiec,aw- hich tion mseordiouulsel.yAanffexctaemdpthleeoinf tehrepmreotabtiiloendoaftasicmolileacrittiyondiusrpinrgesleonotpedclionsuFrigeudreete9c.tTiohne, aevspere-cially age spfoereidmoafgthe esibmacilkapriatcyk. Wwiatsho1umt /tsh,eanlodotphceldosautarec,otlhleecGtioGnOancodualldgonroithbme craurnrineidngouspt,eaendd the
+weretbraojtehct1o0ryHwz.itThhoerrewwitheroeutwGoGLOiDwAaRs sthiensstaamlled. on the backpack. In this experiment,
+only the horizontal LiDAR and the left camera of the binocular camera were used, and the imag4e.s2w. WerHe U64K0y×lin48B0arceksppacekctEivxepleyri.mTehnet backpack was not equipped with a GPS device, so the4r.2e.1w. aDsantaostertuDeevsaclruipetioofnthe trajectory. As mentioned, we consciously walk out of a
+relatively Trehgeumlarajmoratsreinxsaorresaoaft theebWegHinUniKnyglainndbaecnkdpoafctkheinacclquudiesdit:ioVneploadthynfoerVacLcPu-r1a6cyLidar,
+evaluMatyionna.kSDom10e00im-IRp-o1r2t0ancot ltohrrebsihnocldulpaarrcaammeetrear,sXusseends-i3n00thIeMeUxp, aenridmaenptowerecosemtmasufnoilc-ation
+lows:mthoedudliset.aAncneetxharmesphloeldofatnhde amnogbleiltehdreastahoclodlloecf ttihoenkiseyprferasmenetesdelienctFioignuwreer9e. T2mheaanvderage
+10°, rsepspeedctiovfetlhye; abnadckthpeacthkrwesahso1ldms d/1s, dan2d, atnhde dd3atoaf cthoellegcetoiomneatrnicdraoluggohritdhemtecrtuionnniwngersepeed 5m, 1w5mer,eabnodth251m0 ,Hrezs. pTehcetirveewlye.re two LiDARs installed on the backpack. In this experiment,
+Woniltyhtthheehboarcizkopnatcakl LLiiDDAARR asncdantnhienlgefstycsatmemer,awoef tchoellbecinteodcutlharreceadmaetraasewtse,reseuqsueedn,caensd the #01, #im02a, gaensdw#e0r3e, t6o40as×se4s8s0thresppreocptiovseeldy. mTheethboadc.kTphaecktrwajaesctnooriteesq, uloiopppecdlowsuirthe paoGsPitSiodne, vice, and CsoPEthevraeluwesasanreo ptrrueesevnatleude ionf the tFriagjeucrteosry1.0A–1s2m. Seinmtiolanredto, wtheecroenssuclitosuinslythweaKlkIToTuIt of a experriemlaetinvte, ltyhereggrueleanr mlinaetrsixdeanreoateatththeetrbaejgecintonriinegs afrnodmenthdeorfetshueltascwquitihsiotiuotnDpOat-hLFfoAr,atchceuracy blue leivnaelsudaetinoont.e tShoemtreajiemctpoorrietasnfrtotmhrethsheoDldO-pLaFrAam-GeGteArsmuestehdodin, athned epxaprteorifmtheenttrwajeecretos-et as ries ofvoellrolawpsp: itnhge ldeidsttaonctheethcroersrhesopldonadnidngantgralejetchtorerisehsobldeionfgthperekseenytferdamineosneleecctoiloonr.wTehree 2 m red reacntdan1g0l◦e, dreesnpoetcetsivtheelyl;oaonpdctlohseutrherepsohsoitlidosndin1,tdh2e,taranjdecdto3royf, athnedgweoemcoeutrnitcerdotuhgehlodoeptesction closuwreearecc5omrd,in15g mto, tahnedre2d5 mre,ctraenspgelectaivnedlyc.ompared it with the motions.
+
+(b)
+
+(a)
+
+(c)
+
+Figure 9. WHU Kylin backpack laser scanning platform: (a) data collecting and sensors installation; (b) Velodyne VLP-16
+FigurLei9D.AWRH; aUndKy(cli)nMbYacNkTpaDc1k0l0a0s-eIrRs-c1a2n0ncionlgorpblaintfoocrumla: r(ac)admaetraac. ollecting and sensors installation; (b) Velodyne VLP-16 LiDAR; and (c) MYNT D1000-IR-120 color binocular camera.
+
+4.2.2. Results and Analysis
+Figure 10 shows the trajectories and point clouds map comparison of sequence #01 with and without GGO. Specifically, Figure 10a presents the trajectory comparison before
+
+were evenly distributed on the path with an interval of about 10 m (10 m was also the threshold set for loop closure detection). It showed that the loop closure detection accuracy reached 100%. The CPE of the DO-LFA of sequence #01 was large, reaching 2.89 m. Remote Sens. 2021, 1H3, 2o7w20ever, it dropped to 0.12 m after GGO processing. The trajectory of DO-LFA-GGO was19 of 29 also more accurate than DO-LFA in the loop, indicating that the GGO achieved the expected effect. The error was basically eliminated to 0.12 m of the DO-LFA-GGO from 2.89 m of the DO-LFA. throuBguhilcdoinmgp#as0na,1drt,rine#CW0egP2siEtt,,hhaaventnahddpleuo#fbe0lisaan3cgta,kprtcpoeloaoaplcuesrkssedesLcsseiasnDmnttAheabdepRep,isdnrictoeatpschncaoenrnsiiFenbbdigegedmussyrieeesntsethend1ome0dtt–,h.a1waTi2lthe.wtechSoitietrmlhlatejirectlaahtcejrteeodtcrpottioehotsrrih,neyeletowrcdoelpaisottuhuacllostdoseussti.utsn,HrGseteehGpqreoOeuKs,einItTicoTensI, drifted greatleyx,pthereimcoennst,trthuectgerdeepnoliinntescldoeundotme tahpe htraadjecotbovriieosufsrolamytehreinrgesaunltds wcointhfouustioDnO, a-LnFdA, the its consistencbyluwealisnpesodoern. Aotfettehreutrsainjegctolorioeps fcrloomsuthree DdeOt-eLcFtAio-nGGanAdmgeltohboadl, manadppoarpttoimf thizeattriaojenc,tories the optimal eosvtiemrlaptipoinngoflepdlatotftohremcoprroessepsoannddingpotrianjtecctlooruiedssbweinags pobretsaeinnteedd. iTnhoenreefcoorloe,r.thThee red consistency orfetchtaenpgoleindtecnlotueds sthmealopocponclsotsruurcetepdoswitaiosnbientttehre, atrnadjecthtoeryla, yanerdinwgeacnodundtiesdortdherloops of the point cclolousdurseaatctchoerdlionogptocltohseurreedlroeccatatniognledainsdapcopmeapraerde.d it with the motions.
+(a)
+(b)
+Figure 10. Cont.
+
+2021, 13, xRFemOoRtePSEenEsR. 2R02E1V, 1IE3,W2720
+
+20 of 27 20 of 29
+
+(c)
+
+(d)
+
+Figure 10F.igKuyrlien1#00.1Keyxlpienri#m01enetxapl reersiumltesnitnalWrueshualntsUinnivWerushitayn: (Ua)nciovmerpsaitryis:o(nas) bceotmwpeeanritsroanjesctboertiewsewenithtraanjedcwtoi-thout GGO; (b)ripeosinwt ictlhouadnsdmwapithafoteurtGGGGOO; w; (hbi)lep(oc,idn)tpcrleosuendtstmheazpooamfteoruGt pGoOin;twclohuildes(mc)aapnmda(rdk)edprweistehnat bthlaeckzoreocmtangle in (b). out point clouds map marked with a black rectangle in (b).
+
+Figure 11 s4h.o2.w2.sRtehseutltrsaajencdtoArnyaalynsdispoint clouds map of sequence #02 with and with-
+out GGO. SequenceF#i0g2urwe a10s sahnoiwnsdtohoertrsacjeencteoroifesthaendHpuoaiwnteciloSuodnsgmRaepsecaormchpaIrnissotintuotfese(Xqui-ence #01 beipo Village, SwonitghsahnadnwLiathkoeu, tDGoGnOgg. Supaenc)iﬁHca5l.lyS,pFeigcuifrieca1l0lay,pFreisgeunrtes t1h1eatrparjeecsteonrytsctohmepcaormiso-n before
+parison of the traanjedctaofrteiersGfrGoOm, t(hb)e iDs Oth-eLFoAveraanlldpDoOin-tLcFloAu-dGsGmOapmaefttheor dG,GwOh,ilwe hFiilgeu(rce) 1a1nbd (d) are presents the poitnhtecmloaugdnsiﬁmcaatpionfroofmthteheblDacOk -bLoFxAa-rGeaGinO(,bn)ootfinthgethpoaitnatcccluouradcsybbefeofroereanGdGaOfter GGO, was already relarteisvpeelcytihvieglyh. and that the point clouds were no longer compared after GGO. tectedFrionmsecqoumepneseacvterei#fnno0lWryg2ledotwhoiosbepatsrsietcbrrltoauvwsjeteueodcdr,tteohoadarnnietdetttheshce,tehtwpinaoauetntmh)to.hbwbIeetsirstelhhoorfovoalwenpodoeicndptlthoctehlsraovautstaurtltehrhoeeedfs alendobteuoeotmpceucttcibtoel1eodn0rsuimonwrfe#(a10ldso01eoamwtepllacwtsccilo5oao,snrsarauanelcscdrcoetut.shtrhTaadehtceytte-hhrereeyaswchhoeelrdde CPE of the DO-1L0F0A%.mTehtheoCdPoEfotfhtihseseDqOu-eLnFcAe owfasseqsumeanlcle, a#n0d1 wthaesrelawrgae,s rleitatclheicnhga2n.8g9e maf.teHr owever, performing the Git GdrOo.pSppeedctifoic0a.1ll2y,mthaeftCerPEGGvaOlupersoocefstshinegD. OT-hLeFtAraajencdtoDryOo-fLDFOA--LGFGAO-GwGeOrewas also 0.19 m and 0.17mmo,rereascpceucrtaitveetlhya.nFDorOt-hLeFAtrainjetchteorloyotph,aint dthiceatDinOg-tLhFatAthwe oGrGkeOdawcheiellvfeodr,thtehexpected
+DO-LFA-GGO setfiflelcwt. oTrhkeeedrrworewllaasnbdaskiecapltlytheleimCiPnEatevdaltuoe0s.1s2mmalolf. IthnesDeqOu-LenFAce-G#G02O, tfhroemp2o.i8n9tm of the clouds map cleaDrlOy-dLFeAsc.ribed the trees, buildings, and other objects.
+Figure 12 preseBnutsildthinegtsr,atjreecetso, raineds ﬂanagdppoloeisnctacnlobue ddsesmcraibpedfrionmdetthaeil DwOith-LthFeApaonindt cDloOu-ds. Here, LFA-GGO methtohdrosu. gSheqcuomenpcaeri#n0g2twheapsoiinndt oclooruadnsdmoaupt,ditocoarnsbceenseeesnfrthoamt tthheetrHajuecatworeyi wSoitnhgout GGO Research Institudittersicf(toSenodsnigsgrteseahntaclyyn, wtLhaaeskcpeoonSostrtr.reuAacmftteedbraupcsokiinnSgtlcololpoouepdVcmliollsaaupgrheea,ddDetooebncvtgiioognuusaanlnad)ygDerlo4inb.gaTlahmnedatpceorornpaftuiinmsioizna,taionnd, was undulatingt,hine colputdiminagl eusptimanadtiodnoowfnplsattafoirrsm. Fpigosuersea1n2dapporienstecnlotsudthsewpaossoitbitoanininedg.tTrahjeerce-fore, the tories comparisocnonbseisttweneceynotfhteheDpOo-inLtFcAloaundds mDaOp-cLoFnAst-rGucGteOd,wwahsibleetFteigr,uarned1t2hbe lparyeesreinngtsatnhdedisorder point clouds maopf thfreopmoinDt Ocl-oLuFdAs a-Gt tGheOlo. oSpinccloestuhre laoccautiorancdyisoafpptheeareDdO. -LFA was already
+relatively high, the pFoiginutrecl1o1usdhoswwsetrheentroajleocntogreyracnodmppoianrtecdlo,uadnsdmFaipguorfese1q2ucenanced#F02igwuirteh 1an2d without present correspoGnGdOin. gSepqouienntcecl#o0u2dwsaosfatnheinsdlooopresscteanierso.f the Huawei Song Research Institute (Xibeipo
+With the plVoitlltaegde,trSaojnegcstoharinesL,awkee, Dobonsegrgvueadn)tHha5t. Sspixeclioﬁocpallcyl,oFsiugureres 1w1aerperedseetnetcsttehde cinomsep-arison of quence #03. ThetheCtPraEjecotfortihese frDoOm-tLhFeADOin-LFthAisansdeqDuOe-nLcFeA-wGaGsOsmmeathllo, da,nwdhitlhe eFrigeuwrea1s1blipttrleesents the change in the CPpreEolianwtitvhcelilolyeuhdoipsgemhraaanptidnfrgtohmtahttethhGee GDpoOOi-n,LtsFpcAleo-cuGidfGiscOawl,elnyroe, ttnihnoegloCthnPagEtearrccecodumurapcceaydrebdferfoaofmrteer0GG.1GG6OOmw. taos already 0.15 m. For the high-precision trajectory, the DO-LFA-GGO still maintained its original
+high precision. The point clouds map had clear and accurate building outlines and targets.
+The accuracy of the up and down stairs point clouds illustrated the accuracy and robust-
+ness of the algorithm to three-dimensional position.
+
+e Sens. 2021, 13, x FOR PEER REVIEW
+Remote Sens. 2021, 13, 2720
+
+21
+21 of 29
+
+(a)
+(b)
+Figure 11. KFyilgiunre#0112. eKxyplienr#im02eenxptaelrirmeesnutaltlsreisnulHtsuinawHueaiwSeoinSgonshgsahnanLLaakkee ReesseeaarcrhchInIsntitsuttietuHte5 bHu5ildbinugi:ld(ai)ncgo:m(ap)arcisoomnsparisons between trajectboetrwieesenwtriathjecatonrdieswwiitthhoanudt wGiGthOou;taGnGdO(; ban)dp(obi)nptoicnltoculodusdsmmaapp aafftteerrGGGGO.O.
+
+mote Sens.R2e0m2o1te, S1e3n,s.x2F02O1,R13P, E27E2R0 REVIEW
+
+22 of 29 22 of
+
+(a)
+(b)
+Figure 12. Cont.
+
+mote Sens.R2em02ot1e,S1e3ns,.x20F2O1,R13P, 2E7E20R REVIEW
+
+23 of 29 23 o
+
+(c)
+
+(d)
+
+Figure 12.FiKguyrlein12#.0K3yleinxp#0e3reimxpeernimtaelnrtealsruesltusltisninHHuuaawweei iSoSnognshgasnhLaankeLRaekseeaRrcehsIenastrictuhteIDns4tbiutuiltdeinDg:4(ab) ucoimldpianrgis:o(nas)bcetowmeepnarisons be-
+tween trajteracjteoctroireiseswwiitthh aannddwwithitohuot uGtGGO;G(bO) ;p(obin)tpclooiundtscmloapudafstemr GaGpOa;fatnedr (Gc,Gd)Opr;easnendt t(hce,dd)atparceoslleencttintgheendviartoanmcoenlltescatnindg environments andthtehpeopinot icnlotucdlso.uds.
+
+From comparing the trajectories, we observed that the number of loop closures de-
+tIenctaedspinecstesquoefncthe#e02acwcausrtawcoy, aansdsetshsamt thene tlo, oapltchloosuugrehdweteectdioenliwbearsaatlel lcyorcreocltl.eTctheed the d withCloPoEpofctlhoesDurOe-sL,FiAt wmeatshoddifofifctuhilst steoquenenscuerwe atshsamt athll,eafnrdotnhteraenwdabs alicttklepchoasnitgieonafsteorn the lo revispiteerdforpmaitnhgwtheerGeGeOx.aScptleycitﬁhcaellsya, mthee.CAPEnvearlruoesr oofftmheoDrOe-tLhFaAnaanddDozOe-LnFcAe-nGtGimOewteerres (less th the le0Dn.O1g9-tLmhFAoan-fGdaG0fO.o1o7sttmi)ll,wwreaossrpkneecdotirwvmeellayl.la.FnTodrhktehepeCttPtrhaEejevCctaPolEruyvetashluaotefsth#se0m0Da,lOl#.-0ILn1F,sAeaqnwudoern#kc0ee2d#0wa2fe,tletlhrfeoGpr,oGtihnOet were 0 m, 0.c1l7oumds, manapdc0le.a1r5lymde, srcerisbpeedctthievetrleye,s,wbuhiilcdhingasr,eanadllobtheelor wobj2ec0tsc. m. Considering the origi inconsistFeingcuyreo1f2tprrueesevnatslutheemtraojeticotonr,ietshaenadcptouianlt eclroruodrsmmayp fbroemlotwheeDr.O-LFA and DO-
+LTFhAe-GaGboOvme etthhroedes. seStesquoefncreep#0re2swenastaitnidvoeordaantadsoeutstdionocrluscdeendes bfrootmh tihnedHoourawaenid outd sceneSso,nwg hReicsheasrcuhgIgnestsittsutteh(aStonthgeshDanOL-aLkFeASt-rGeaGmObapckroSploopseeVdililnagteh, iDsopnagpgueranc)aDn4b. eThseuccessfu operattretarerjedaci.tnoWwrieahssecunonmdthpuaelariotsinoringg,biinnetcawlluedDeinnOtgh-uLepDFaAOn-dLhFdaAodwaanndcsuDtamOirs-uL. lFFaAigt-iuGvrGee O1p2,oawsphirtieiloesenFnitgesurtrrheoe1rp2, boGspiGtrieoOsneinnstigsgnifican elimitnhaetpeodinittcsloCuPdsEmvaaplufreosm. DWOh-LeFnAt-hGeGOor. iSgininceatlhDe aOcc-uLrFaAcy ohfatdheaDhOi-gLhFAerwaacscaulrreaacdyy, the G
+still mrelaaitnivtealiynheidghi,ttshehpigoihntacclocuudrsawcye.reTnhoeloGngGerOcoemnpsaurreedd, anthdeFiagcucruesr1a2ccyanodf 1p2odspitrieosennitng and consicsotrernescpyonodfinthgeppoionitnctloculdosuodfsthme salpop. eTshtaeirasc. curacy of global positioning and point clou
+mapping can reach less than 20 cm, and it had high robustness via the backpack platfo
+under both indoor and outdoor environments.
+
+4.3. Comparisons with Google Cartographer
+The Cartographer developed by Google is a 2D/3D LiDAR SLAM utilizing loop c sure detection and graph optimization [33]. We ran the Cartographer with the Kylin and #03 datasets, and the results were compared with that from the DO-LFA-GGO.
+Figures 13 and 14 present the point clouds results from the Cartographer with Kylin #02 and #03 datasets. The color of the point clouds from the Cartographer were termined by the LiDAR backscatter laser intensity. Confusion and ghosts are all the res of coaxial progressive errors, and the displacement error roughly measured by the po
+
+Remote Sens. 2021, 13, 2720
+
+24 of 29
+
+With the plotted trajectories, we observed that six loop closures were detected in sequence #03. The CPE of the DO-LFA in this sequence was small, and there was little change in the CPE while operating the GGO, speciﬁcally, the CPE reduced from 0.16 m to 0.15 m. For the high-precision trajectory, the DO-LFA-GGO still maintained its original high precision. The point clouds map had clear and accurate building outlines and targets. The accuracy of the up and down stairs point clouds illustrated the accuracy and robustness of the algorithm to three-dimensional position.
+In aspects of the accuracy assessment, although we deliberately collected the data with loop closures, it was difﬁcult to ensure that the front and back positions on the loop revisited path were exactly the same. An error of more than a dozen centimeters (less than the length of a foot) was normal. The CPE values of #00, #01, and #02 after GGO were 0.12 m, 0.17 m, and 0.15 m, respectively, which are all below 20 cm. Considering the original inconsistency of true value motion, the actual error may be lower.
+The above three sets of representative datasets included both indoor and outdoor scenes, which suggests that the DO-LFA-GGO proposed in this paper can be successfully operated. When the original DO-LFA had a cumulative position error, GGO signiﬁcantly eliminated its CPE values. When the original DO-LFA had a higher accuracy, the GGO still maintained its high accuracy. The GGO ensured the accuracy of positioning and the consistency of the point clouds map. The accuracy of global positioning and point clouds mapping can reach less than 20 cm, and it had high robustness via the backpack platform under both indoor and outdoor environments.
+4.3. Comparisons with Google Cartographer
+The Cartographer developed by Google is a 2D/3D LiDAR SLAM utilizing loop closure detection and graph optimization [33]. We ran the Cartographer with the Kylin #02 and #03 datasets, and the results were compared with that from the DO-LFA-GGO.
+Figures 13 and 14 present the point clouds results from the Cartographer with the Kylin #02 and #03 datasets. The color of the point clouds from the Cartographer were determined by the LiDAR backscatter laser intensity. Confusion and ghosts are all the result of coaxial progressive errors, and the displacement error roughly measured by the point clouds was approximately 5–10 m. The DLO-LFA-GGO in this paper detected the loop closure based on visual BoW similarity and conducted the point clouds re-matching to achieve fusion of the two data. However, the Cartographer detects the loop closure with the point clouds similarity. As a result, the point clouds from the Cartographer have severe layering and ghosting at the loop repeats, with a displacement error up to 5–10 m; while the point clouds maps from the DO-LFA-GGO have clear and accurate targets with high consistency, and the geometric CPE is only approximately 20 cm.
+
+Remote Sens. 2021, 13, x FOR PEER REVIEW
+
+24 of 27
+
+Remote Sens. 2021, 13, 2720 while the point clouds maps from the DO-LFA-GGO have clear and accurate25taorf g29ets with high consistency, and the geometric CPE is only approximately 20 cm.
+
+(a)
+
+(b)
+Figure 1F3i.guKryel1in3. #K0y2liCn a#0rt2oCgarratpoghrearppheorinptoicnltoculodusdms mapa:p:(a(a))gglloobbal ppooininttclcoluodusdms amp;aapn;dan(bd) z(obo)mzoooumt ofotuhte opfoitnhteclpoouidnst clouds map of tmheaplooof pthcelloosouprcelopsauret.part.
+
+Remote SenRse.m2o0te2S1e,n1s3. ,20x2F1,O1R3, 2P7E2E0 R REVIEW
+
+26 of 29 25 of 27
+
+(a)
+(b)
+Figure 1F4ig. uKryel1in4. #K0y3linCa#0rt3oCgarratpoghrearp:h(ear): g(al)ogblaolbpalopinoitnctlcolouuddssmmap; aanndd(b(b) )zozoomomoutooufttohfe tphoeinpt oclionutdcslomuadpsomf thaeploofpthe loop closure pclaorstu.re part.
+5. Conclusions In this paper, we investigated a LiDAR SLAM back-end graph optimization methods
+using visual features to improve loop closure detection and graph optimization performance. With both experiments in open-source KITTI datasets and a self-developed backpack lasering scanning system, we can conclude that:
+(1) Visual features can efficiently improve loop closure detection accuracy;
+
+Remote Sens. 2021, 13, 2720
+
+27 of 29
+
+5. Conclusions
+In this paper, we investigated a LiDAR SLAM back-end graph optimization methods using visual features to improve loop closure detection and graph optimization performance. With both experiments in open-source KITTI datasets and a self-developed back-pack lasering scanning system, we can conclude that:
+(1) Visual features can efﬁciently improve loop closure detection accuracy; (2) With the detection loop closure, the graph optimization reduced the CPE values of the LiDAR SLAM through the point clouds re-matching; (3) Compared with Cartographer, LiDAR based SLAM, our LiDAR/visual SLAM with loop closure detection and global graph optimization achieved much better performance, including better point clouds map and CPE values. The source code of this paper was uploaded to the GitHub website and is open source for readers. We expect that the work in this paper will inspire some other interesting investigations into visual/LiDAR SLAM. Although a satisfying performance was obtained, the following work is of great signiﬁcance for further investigation. (1) In this paper, to guarantee the accuracy of loop closure detection using visual features, we set strict parameters and rules, which led to some loop closures being missed. Thus a more robust loop closure detection strategy is of great signiﬁcance for improving the use of visual/LiDAR SLAM in complex environments; (2) As presented in the experiment, different trajectories had different numbers and positions of detected loop closures. It is therefore interesting to explore the inﬂuence of the loop closure number and distributions on the GGO performance. (3) In this paper, we utilized the visual features in back-end graph optimization, and so, it would be interesting to explore visual/LiDAR based front-end odometry. (4) Visual/LiDAR are the most popular sensors in environmental perception. Based on the code used in this paper, it is prospective to integrate other sensors, i.e., GNSS and IMU, to the current visual/LiDAR SLAM in the graph optimization framework.
+Author Contributions: Methodology, S.C.; software, S.C.; writing—original draft preparation, C.S. and C.J.; writing—review and editing, C.J.; supervision, Q.L.; system development, B.Z. and W.X.; dataset collection and experiments conducting. All authors have read and agreed to the published version of the manuscript.
+Funding: This study was supported in part by the National Key R&D Program of China (2016YFB0502203), Guangdong Basic and Applied Basic Research Foundation (2019A1515011910), Shenzhen Science and Technology program (KQTD20180412181337494, JCYJ20190808113603556) and the State Scholarship Fund of China Scholarship Council (201806270197).
+Data Availability Statement: The source code of the paper is uploaded to GitHub and its link is https://github.com/BurryChen/lv_slam (accessed on 7 June 2021).
+Acknowledgments: Thank you to State Key Laboratory of Information Engineering in Surveying, Mapping and Remote Sensing in Wuhan University for technical support and data collection support. Thank you to the anonymous reviewers who provided detailed feedback that guided the improvement of this manuscript during the review process.
+Conﬂicts of Interest: The authors declare no conﬂict of interest.
+References
+1. Bailey, T.; Durrant-Whyte, H. Simultaneous localization and mapping (SLAM): Part II. IEEE Robot. Autom. Mag. 2006, 13, 108–117. [CrossRef]
+2. Cadena, C.; Carlone, L.; Carrillo, H.; Latif, Y.; Scaramuzza, D.; Neira, J.; Reid, I.; Leonard, J.J. Past, present, and future of simultaneous localization and mapping: Toward the robust-perception age. IEEE Trans. Robot. 2016, 32, 1309–1332. [CrossRef]
+3. Zhou, B.; Ma, W.; Li, Q.; El-Sheimy, N.; Mao, Q.; Li, Y.; Zhu, J. Crowdsourcing-based indoor mapping using smartphones: A survey. ISPRS J. Photogramm. Remote Sens. 2021, 177, 131–146. [CrossRef]
+4. Gao, X.; Wang, R.; Demmel, N.; Cremers, D. LDSO: Direct sparse odometry with loop closure. In Proceedings of the 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), Madrid, Spain, 1–5 October 2018; pp. 2198–2204.
+
+Remote Sens. 2021, 13, 2720
+
+28 of 29
+
+5. Engel, J.; Koltun, V.; Cremers, D. Direct sparse odometry. IEEE Trans. Pattern Anal. Mach. Intell. 2017, 40, 611–625. [CrossRef] [PubMed]
+6. Klein, G.; Murray, D. Parallel tracking and mapping for small AR workspaces. In Proceedings of the 2007 6th IEEE and ACM International Symposium on Mixed and Augmented Reality, Nara, Japan, 13–16 November 2007; pp. 225–234.
+7. Mur-Artal, R.; Tardos, J.D. ORB-SLAM2: An open-source SLAM system for monocular, stereo, and RGB-D cameras. IEEE Trans. Robot. 2017, 33, 1255–1262. [CrossRef]
+8. Hess, W.; Kohler, D.; Rapp, H.; Andor, D. Real-time loop closure in 2D LIDAR SLAM. In Proceedings of the 2016 IEEE International Conference on Robotics and Automation (ICRAE), Jeju-Do, Korea, 27–29 August 2016; pp. 1271–1278.
+9. Zhang, J.; Singh, S. Low-drift and real-time lidar odometry and mapping. Auton. Robot. 2017, 41, 401–416. [CrossRef] 10. Grisetti, G.; Stachniss, C.; Burgard, W. Improved techniques for grid mapping with rao-blackwellized particle ﬁlters. IEEE Trans.
+Robot. 2007, 23, 34. [CrossRef] 11. Sturm, J.; Engelhard, N.; Endres, F.; Burgard, W.; Cremers, D. A benchmark for the evaluation of RGB-D SLAM systems. In
+Proceedings of the 2012 IEEE/RSJ International Conference on Intelligent Robots and Systems, Vilamoura-Algarve, Portugal, 7–12 October 2012; pp. 573–580. 12. Qin, T.; Li, P.; Shen, S. VINS-mono: A robust and versatile monocular visual-inertial state estimator. IEEE Trans. Robot. 2018, 34, 1004–1020. [CrossRef] 13. Shen, S.; Michael, N.; Kumar, V. Autonomous multi-ﬂoor indoor navigation with a computationally constrained MAV. In Proceedings of the 2011 IEEE International Conference on Robotics and Automation, Shanghai, China, 9–13 May 2011; pp. 20–25. 14. Shen, S.; Michael, N.; Kumar, V. Tightly coupled monocular visual-inertial fusion for autonomous ﬂight of rotorcraft MAVs. In Proceedings of the 2015 IEEE International Conference on Robotics and Automation (ICRA), Seattle, WA, USA, 26–30 May 2015; pp. 5303–5310. [CrossRef] 15. Engel, J.; Schöps, T.; Cremers, D. LSD-SLAM: Large-scale direct monocular SLAM. In Proceedings of the 13th European Conference of Computer Vision, Zürich, Switzerland, 6–12 September 2014; pp. 834–849. 16. Forster, C.; Pizzoli, M.; Scaramuzza, D. SVO: Fast semi-direct monocular visual odometry. In Proceedings of the IEEE International Conference on Robotics and Automation (ICRA), Hong Kong, China, 31 May–7 June 2014; pp. 15–22. 17. Wang, R.; Schworer, M.; Cremers, D. Stereo DSO: Large-scale direct sparse visual odometry with stereo cameras. In Proceedings of the 2017 IEEE International Conference on Computer Vision (ICCV), Venice, Italy, 22–29 October 2017; pp. 3923–3931. 18. Thrun, S. Probabilistic robotics. Commun. ACM 2002, 45, 52–57. [CrossRef] 19. Vincent, R.; Limketkai, B.; Eriksen, M. Comparison of indoor robot localization techniques in the absence of GPS. In Detection and Sensing of Mines, Explosive Objects, and Obscured Targets XV; Harmon, R.S., Holloway, J.H., Jr., Broach, J.T., Eds.; International Society for Optics and Photonics: Bellingham, WA, USA, 2010; Volume 76641. 20. Thrun, S.; Montemerlo, M. The graph SLAM algorithm with applications to large-scale mapping of urban structures. Int. J. Robot. Res. 2006, 25, 403–429. [CrossRef] 21. Olson, E.B. Real-time correlative scan matching. In Proceedings of the 2009 IEEE International Conference on Robotics and Automation, Kobe, Japan, 12–17 May 2009; pp. 4387–4393. [CrossRef] 22. Zhang, J.; Kaess, M.; Singh, S. A real-time method for depth enhanced visual odometry. Auton. Robot. 2017, 41, 31–43. [CrossRef] 23. Graeter, J.; Wilczynski, A.; Lauer, M. LIMO: LiDAR-monocular visual odometry. In Proceedings of the 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), Madrid, Spain, 1–5 October 2018; pp. 7872–7879. 24. Shin, Y.S.; Park, Y.S.; Kim, A. Direct visual slam using sparse depth for camera-LiDAR system. In Proceedings of the IEEE International Conference on Robotics and Automation (ICRA), Brisbane, Australia, 21–25 May 2018; pp. 5144–5151. 25. Shao, W.; Vijayarangan, S.; Li, C.; Kantor, G. Stereo visual inertial LiDAR simultaneous localization and mapping. In Proceedings of the 2019 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), Macau, China, 3–8 November 2019; pp. 370–377. 26. Zhang, J.; Singh, S. Laser-visual-inertial odometry and mapping with high robustness and low drift. J. Field Robot. 2018, 35, 1242–1264. [CrossRef] 27. Zhang, J.; Singh, S. Visual-lidar odometry and mapping: Low-drift, robust, and fast. Proceedings of 2015 IEEE International Conference on Robotics and Automation (ICRA), Seattle, WA, USA, 26–30 May 2015; pp. 2174–2181. 28. Hahnel, D.; Burgard, W.; Fox, D.; Thrun, S. An efﬁcient FastSLAM algorithm for generating maps of large-scale cyclic environments from raw laser range measurements. In Proceedings of the 2003 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), Las Vegas, NV, USA, 27–31 October 2003; Volume 1, pp. 206–211. 29. Beeson, P.; Modayil, J.; Kuipers, B. Factoring the mapping problem: Mobile robot map-building in the hybrid spatial semantic hierarchy. Int. J. Robot. Res. 2009, 29, 428–459. [CrossRef] 30. Latif, Y.; Cadena, C.; Neira, J. Robust loop closing over time for pose graph SLAM. Int. J. Robot. Res. 2013, 32, 1611–1626. [CrossRef] 31. Ulrich, I.; Nourbakhsh, I. Appearance-based place recognition for topological localization. In Proceedings of the 2000 ICRA. Millennium Conference. IEEE International Conference on Robotics and Automation, San Francisco, CA, USA, 24–28 April 2000; Volume 2, pp. 1023–1029. [CrossRef] 32. Galvez-Lopez, D.; Tardos, J.D. Real-time loop detection with bags of binary words. In Proceedings of the 2011 IEEE/RSJ International Conference on Intelligent Robots and Systems, San Francisco, CA, USA, 25–30 September 2011; pp. 51–58.
+
+Remote Sens. 2021, 13, 2720
+
+29 of 29
+
+33. Galvez-Lopez, D.; Tardos, J.D. Bags of binary words for fast place recognition in image sequences. IEEE Trans. Robot. 2012, 28, 1188–1197. [CrossRef]
+34. Sivic, J.; Zisserman, A. Video Google: A text retrieval approach to object matching in videos. In Proceedings of the IEEE International Conference on Computer Vision (ICCV), Nice, France, 13–16 October 2003; p. 1470.
+35. Robertson, S. Understanding inverse document frequency: On theoretical arguments for IDF. J. Doc. 2004, 503–520. [CrossRef] 36. Nister, D.; Stewenius, H. Scalable recognition with a vocabulary tree. In Proceedings of the IEEE Computer Society Conference
+on Computer Vision and Pattern Recognition (CVPR), New York, NY, USA, 17–22 June 2006; pp. 2161–2168.
+

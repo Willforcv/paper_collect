@@ -1,0 +1,376 @@
+CRLF: Automatic Calibration and Reﬁnement based on Line Feature for LiDAR and Camera in Road Scenes
+Tao Ma∗, Zhizheng Liu∗, Guohang Yan, and Yikang Li†
+
+arXiv:2103.04558v1 [cs.CV] 8 Mar 2021
+
+Abstract— For autonomous vehicles, an accurate calibration for LiDAR and camera is a prerequisite for multi-sensor perception systems. However, existing calibration techniques require either a complicated setting with various calibration targets, or an initial calibration provided beforehand, which greatly impedes their applicability in large-scale autonomous vehicle deployment. To tackle these issues, we propose a novel method to calibrate the extrinsic parameter for LiDAR and camera in road scenes. Our method introduces line features from static straight-line-shaped objects such as road lanes and poles in both image and point cloud and formulates the initial calibration of extrinsic parameters as a perspective3-lines (P3L) problem. Subsequently, a cost function deﬁned under the semantic constraints of the line features is designed to perform reﬁnement on the solved coarse calibration. The whole procedure is fully automatic and user-friendly without the need to adjust environment settings or provide an initial calibration. We conduct extensive experiments on KITTI and our in-house dataset, quantitative and qualitative results demonstrate the robustness and accuracy of our method.
+
+I. INTRODUCTION
+Autonomous driving has recently become one of the most popular technologies in both industry and academia. As a complicated system, it requires numerous modules collaboratively to work together. Among them, the perception system is the most challenging and upstream part. Since different sensors have their advantages and shortcomings, fusing multiple heterogeneous sensors becomes the key to robust and accurate perception ability. As the most widely used sensors, LiDAR and camera are usually equipped to achieve a dense 3D perception. Therefore, to fuse their strengths for better perception performance, an accurate extrinsic calibration for LiDAR and camera serves as the cornerstone of this multi-sensor perception system.
+Researchers have investigated various scenarios to improve the accuracy and efﬁciency of calibration results, such as speciﬁc targets like checkerboards [1]–[4] or ordinary boxes [5], arbitrary edge feature [6], and semantic objects like cars [7]. Among these methods, automatic target-less calibration methods [6], [7] are user-friendly ones, since they can cut down time consumption and manual work. Besides, they greatly increase the ﬂexibility of the calibration settings and the possibility for online calibration.
+However, these methods usually need a provided initial calibration due to the lack of effective constraint information,
+
+∗ Equally contributed to the work.
+
+† Corresponding author.
+
+Tao Ma, Zhizheng Liu, Guohang Yan, and Yikang Li
+
+are with Autonomous Driving Group, SenseTime, Shanghai,
+
+China.
+
+{matao, liuzhizheng, yanguohang,
+
+liyikang}@senseauto.com
+
+Fig. 1. The proposed CRLF extracts straight line features from both the image (white region) and point cloud (pink points), and estimates the coarse calibration by solving the P3L problem under line feature constraints. The ﬁnal extrinsic parameters after reﬁnement with semantic line features is used to project all point cloud data to the original image.
+which adds additional effort and impedes its practice in large-scale applications. To mitigate this issue, [8] propose a fully automatic approach based on semantic constraints. Speciﬁcally, they use semantic centroids (SCs) for each semantic class, i.e., pedestrians, cyclists, and especially vehicles to conduct the initial calibration. However, multipleframe inputs are compulsory to extract enough SCs, and these SCs usually lie near the ground plane, which leads to considerable difﬁculties in solving the perspective-npoints (PnP) problem to give a robust initial calibration. Additionally, these types of objects are usually dynamic in road scenes, which would produce uncorrectable motion distortion of laser points. Therefore, to enhance the accuracy and stability of the fully automatic methods, a vital step is to extend the on-road objects to static ones with sufﬁcient spatial constraints in road scenes.
+To this end, we leverage straight-line-shaped objects including lanes and poles to enrich our potential targets for calibration. Correspondingly, this new calibration method is named CRLF: automatic Calibration and Reﬁnement based on Line Feature. Firstly, straight-line features are extracted from road lanes and poles of a single pair of image and
+
+point cloud. Then we formulate the calibration of extrinsic parameters as a perspective-3-lines (P3L) problem. As shown in Fig. 1, CRLF could segment line-shaped targets in both the image and the point cloud, in which three straight-line correspondences can provide enough constraints to compute a coarse calibration with appreciable speed. Subsequently, we supervise the matching between those image masks and segments of the point cloud through a cost function to further reﬁne the calibration result. Considering the fewer requirements for environment settings and the fully-automatic calibration procedure, the proposed method could contribute to a more efﬁcient and practical large-scale autonomous vehicle (AV) and deployment and test.
+The contributions of this work are summarized as fourfold:
+1) We propose a fully automatic and target-less method, CRLF, for LiDAR-Camera extrinsic calibration based on straight-line-shaped objects in road scenes.
+2) A line feature extractor is proposed to extract straight line features of lanes and poles for both the image and the point cloud.
+3) We introduce a more robust initial calibration estimation algorithm based on line correspondences and a newly deﬁned cost function for calibration reﬁnement.
+4) Evaluated on KITTI and our in-house dataset, we demonstrate CRLF’s robustness and accuracy in quantitative and qualitative results.
+II. RELATED WORK
+Early methods often rely on calibration targets that can be observed from both the image and the point cloud. The most common ones are checkerboards, and [1]–[4] used points, lines, planes, and intensity correspondences on checkerboards. Researchers also design targets that are tailored to the task of extrinsic calibration to better capture the feature correspondences [5], [9]–[11]. However, these methods usually need a complicated setup for placing these targets and are laborious to users or autonomous driving companies with lots of demands on calibration.
+To overcome this problem, researchers have also proposed methods that don’t need calibration targets and can work in arbitrary scenes. Pandey et al. [12] suggested using mutual information to match grayscale intensity in image and reﬂectance intensity in the point cloud, and which is further improved by considering other feature correlation and using better optimization methods [13]–[15]. However, these methods require an initial calibration provided elsewhere. Besides, the optimization is inefﬁcient and can take several minutes. Methods without an initial calibration have also been proposed in [16]–[21] using visual odometry. They align trajectories obtained from image and point cloud sequences. Nevertheless, their performance strongly depends on the result of trajectory estimation and they also have low efﬁciency.
+Meanwhile, as deep learning has witnessed huge progress in recent years, researchers have also been exploring methods
+
+using deep learning techniques. [22], [23] trained an end-toend model that can correct the calibration within a rotation and translation boundary, while those methods are not universal and their performance depends heavily on the training dataset. There will exist lots of repetitive work such as data preparation once the type of LiDAR or camera changes.
+Levinson et al. [6] proposed a novel calibration method for online calibration. They suggested that discontinuities in laser scans correspond to edges in the image. The calibration result is given by optimizing a cost function that measures how well each laser point corresponds to an edge in the image. Unfortunately, this method is vulnerable to noises and can only adjust the calibration in a small range. With the development of semantic segmentation techniques, Zhu et al. [7] argued that semantic features are more robust and effective than edge features. They extracted cars from both the image and the point cloud, and the calibration is optimized through a similar cost function under semantic constraints. But their method still needs an initial calibration from other methods. Wang et al. [8] presented that an initial calibration can be computed by aligning SCs and solving the PnP problem. They also considered more semantic classes such as pedestrians and cyclists. However, the SCs often lie near the ground plane, which adds difﬁculty to solve the initial calibration. As a result, a robust initial calibration and an accurate ﬁnal result would require tens of frames to have enough semantic constraints. In this work, we propose to solve the initial calibration through the consistency of line features in a single frame of image and point cloud data.
+III. METHODOLOGY
+Given a single frame of image and point cloud data in road scenes, our method could automatically compute the extrinsic parameter between the corresponding camera and LiDAR. Firstly, a line feature extractor could capture line pairs for both the image and the point cloud, which includes a lane detector to extract road lanes, and a pole detector to segment pole objects, such as street lights and telegraphy poles on the side of the road. Then, several lines are ﬁtted from the detected lanes and pole features, with which, a coarse calibration can be estimated by ﬁnding the correct line correspondences and solving the P3L problem. Finally, a cost function deﬁned under the semantic constraints of detected lanes and poles is utilized to optimize the coarse calibration to the reﬁned result. We introduce the details of all these processes in the following subsections.
+A. Problem Formulation
+The whole calibration process aligns a point cloud and an image in road scenes, where the AV is driving on a straight and ﬂat road with road lanes painted and poles on the side of the road. In our setting, the point cloud and the image are temporally synchronized, and we assume both the LiDAR and the camera are used for perceiving road scenes, therefore their ﬁeld of view should have an overlap in the road area. We also assume that the LiDAR and the camera work under their desired lighting and weather conditions.
+
+The point cloud is denoted as P L = {pL1 , pL2 , ..}, where L represents the LiDAR coordinate system. For each 3D point
+
+pLi = (xi, yi, zi)T ∈ R3, we denote its corresponding pixel coordinate on the image plane as qi = (ui, vi)T ∈ R2. The
+
+point and the pixel can then be correlated by the calibration
+
+process in two steps. First, the point pLi is transformed to pCi ∈ R3, which is under the camera coordinate system C. This is a rigid body transformation and can be represented
+
+as
+
+pCi = R(r) · pLi + t,
+
+(1)
+
+where R(r) represents the rotation and can be parameterized
+
+by angle-axis representation r, where
+
+r r2
+
+is
+
+a
+
+unit
+
+vector
+
+representing the rotation axis and r 2 is the rotation angle.
+
+t represents the translation with t = (tx, ty, tz)T . The pair
+
+(r, t) has six degrees of freedom (6DoF) and is the extrinsic
+
+parameter between LiDAR and camera. Next, pCi is projected
+
+onto the image plane through a projection function:
+
+K : R3 → R2, qi = K(pCi ) .
+
+(2)
+
+K may vary with different projection models and can be deﬁned by the camera intrinsic parameter such as focal length and lens distortion. In this work, we assume that the intrinsic parameter of camera is well calibrated and we focus on exploring the accurate extrinsic parameter (r, t).
+
+B. Line Feature Extractor
+From the perspective of extracting line pairs with abundant semantic information, we propose the line feature extractor
+to process both the image and the point cloud. The static
+road lanes, lights, and telegraphy poles serve as the supplier
+of line features. For the point cloud, we focus on utilizing
+the geometric priors and sensor characteristics to segment
+these targets. For the image, the feature extraction is mainly
+based on semantic segmentation and contour reﬁnement.
+1) Point Cloud Extraction: For the point cloud, we will extract points from P L which belong to line feature. First of all, P L can be segmented into two subsets PgLround and PoLbject by performing a ground plane separation through RANSAC plane ﬁtting [24], where PgLround consists of all points that belong to the ground plane and PoLbject consists of points from elsewhere. The thickness of ground plane is
+set to 0.2m, which is the maximum elevation offset between any two points in PgLround.
+Next, the points of the road lane PlLane are extracted from PgLround by utilizing an important characteristic of LiDAR sensor, intensity. Most road lanes are painted with
+high-reﬂectance materials to increase visibility in the dark, which gives them higher LiDAR signal response, i.e., higher
+intensity. Hence, we can extract the lane part by setting an intensity threshold I0 and points whose intensity values are larger than I0 are kept.
+Besides, in order to remove points from noise and other
+high-reﬂectance objects, we ﬁt straight lines in the remaining
+points by RANSAC line ﬁtting [24], which could reject
+outliers and merge line segments such as dotted lanes into one. Then, the distance dmin from each point to its closest
+
+line could be easily calculated and the points whose dmin is smaller than a threshold D0 will be retained. Thus, the whole process could be summarized as follows,
+
+PlLane = {p | p ∈ PgLround, p ) intensity > I0 and p ) dmin < D0} . (3)
+We adjust I0 to be µI + σI to adaptive extract PlLane in different environments, where µI and σI are the mean and standard deviation of intensity values for all points from PgLround. And we set D0 = 0.3 m which is twice the common width of road lane.
+Afterwards, the points of poles PpLole can be extracted from PoLbject. To improve robustness, we rotate the x − y plane of L to be parallel to the ground plane, and set the x axis to be
+parallel to one line extracted in the ground plane. We call this
+new coordinate system the ground-parallel coordinate system
+G. These two coordinate systems, G and L, have the same
+origin while the Z-axis of G is vertical to the ground plane
+computed in the previous step. Hence the z coordinate of G
+corresponds to the ground elevation value of the points with
+respect to the elevation of the LiDAR. This transformation
+can be achieved through a rotation as
+
+pGobject = RGL · pLobject .
+
+(4)
+
+We then construct a 2D grid S onto the x − y plane under G. S is constructed within the xG boundary of [0 m, 100 m] and the yG boundary of [−20 m, 20 m] in our experiment, to
+make sure only the side of the road is included. For each grid cell s ∈ S, it contains points in PoGbject that are inside the vertical pillar of s. We denote Hmax(s) to be the maximum elevation value in cell s, and only keep the grid cells whose Hmax(s) are larger than an elevation threshold H1. Thus, the set of points from all such grids PSG can be presented as
+PSG = S˜, where S˜ = {s ∈ S | Hmax(s) > H1} . (5)
+
+In addition, points with elevation smaller than a threshold H0 are also discarded due to large noise near the ground plane, with which we can extract points of poles PpGole:
+PpLole = {(RGL )−1 · pG | pG ∈ PSG and pG ) z > H0 } . (6)
+In our experiment, we use H0 = −1 m and H1 = 3 m. And grid cell length is set to 0.5 m, ensuring that at most one pole appears in a single cell.
+2) Image Segmentation: In the ﬁeld of the image, BiSeNet-V2 [25] has been widely used as one of the stateof-the-art semantic segmentation networks with superior performance and real-time inference speed. We keep the architecture of BiSeNet-V2 to get preliminary segmentation results. However, poles and lanes are very thin objects and it is hard to capture their contours accurately using a network. Therefore, we further reﬁne the contours using a Dense CRF operator [26], which matches pixels with similar colors as well as close positions. As shown in Fig. 2, the contours of poles are more compact and realistic after the CRF operator.
+Consequently, the pixels from poles Qpole and from road lanes Qlane can be directly obtained from the class label
+
+(a)
+
+(b)
+
+Fig. 2. Pole masks before CRF operator (a) and after CRF operator (b).
+
+“pole” and “road lane”. Combining the segmentation results, we can obtain two binary masks Mline : R2 → {0, 1}, line ∈ {pole, lane} on the pixel coordinate deﬁned
+as follows:
+
+Mline(q) :=
+
+1 0
+
+q ∈ Qline . otherwise
+
+(7)
+
+3) Cost Function: After line features are extracted from both the image and the point cloud, we propose a cost function that measures how well the image and the point cloud is correlated given an extrinsic parameter (r, t) using semantic constraints.
+First of all, similar to [7], we apply an inverse distance transformation (IDT) to the mask Mline to avoid duplicate local maxima during later optimization. The resulting height map Hline, line ∈ {pole, lane} is deﬁned as follows:
+
+Hline(q)
+
+:=
+
+ max
+s∈R2 \Qline
+
+γ0 q−s
+
+ max
+s∈Qline
+
+γ1
+
+q−s
+
+1
+
+1
+
+q ∈ Qline . (8)
+q ∈ R2 \ Qline
+
+Next, we propose our cost function J : (r, t) → R, which represents the consistency between the projecting pixels of Plane and Ppole and their corresponding masks in the image. The cost function J is deﬁned as
+
+Hline ◦ K(R(r)p + t)
+
+J=
+
+p∈PlLine
+
+line∈{pole, lane}
+
+|PlLine|
+
+, (9)
+
+which uses (1) and (2) mentioned above for projecting points. |PlLine| refers to the number of points in PlLine and is used to balance the cost between poles and lanes. The larger the cost function is, the better the semantic features from two data domains match.
+Compared to the cost function proposed in [8], our cost function is cheaper to compute as points from line features are fewer than other semantic classes like cars. Moreover, the line features are from different spatial positions rather than clustered near the ground plane, which can provide stronger spatial constraints and increase the robustness of calibration.
+
+C. Coarse Calibration
+As stated before-head, most target-less calibration methods assume an initial calibration is available. On the contrary, our method could provide a coarse calibration from line correspondences which acts as an initialization to the later optimization process as shown in Fig. 3.
+We ﬁrst ﬁt lines of road lanes and poles in the image as (llIane, lpI ole) and in the point cloud as (llLane, lpLole) respectively. llLane and lpLole can be obtained by RANSAC line
+
+Image Plane
+
+Fig. 3. Illustration of the coarse calibration. The yellow and red lines are ﬁtted from the line features in the point cloud and the image respectively. The coarse calibration is given by solving the P3L problem to project orange lines to the corresponding red lines in image plane, with the help of an intermediate ground-parallel coordinate system G marked in green.
+ﬁtting in PlLane and PpLole. For lpI ole and llIane, we extract them through Hough line transform [27] on Mlane and Mpole.
+After the line equations are computed, we establish in total three-line correspondences including two-lane correspondences and one-pole correspondence in the image and the point cloud to solve the P3L problem and obtain the coarse calibration. To ﬁnd the correct line correspondences, we ﬁrst select llIane1, llIane2, and lpI ole1 with the largest pixel area from the image and keep them ﬁxed. Then we enumerate all llLane and lpLole in the point cloud and solve the P3L problem, which yields a coarse calibration for each possible correspondence. Suppose we have n1 llLane and n2 lpLole, then we will obtain n1(n1 − 1)n2 candidates for the coarse calibration. Finally we evaluate each course calibration candidate using the cost function J , and one with the largest cost should be associated with the correct correspondence.
+In a general setting, the P3L problem involves solving an eighth-order equation. Since lanes are often parallel to each other, the problem can be greatly simpliﬁed by assuming llLane1 llLane2. To exploit this relationship, we ﬁrst transform llLane and lpLole to the ground-parallel coordinate system G as an intermediate step, where the following relationship holds:
+
+pC = RCG · RGL · pL + tCG .
+
+(10)
+
+As RGL is already known, we compute RCG and tCG using the method introduced in [28]. RCG can be parameterized as three consecutive rotations:
+
+RCG = R · Rot(X, α) · Rot(Z, β) ,
+
+(11)
+
+where R is an arbitrary rotation matrix whose ﬁrst column is equal to the normal nC of the plane back-projected by lpI ole, and Rot(X, α) and Rot(Z, β) represent a rotation around
+the current X-axis and the current Z-axis respectively. In
+this setting, the order of the equation for α and β is reduced to 2, and RCG can be solved subsequently. Next tCG can be
+
+obtained by solving the following system of linear equations:
+
+nCi T · tCG = −nCi T · RCG · RGL · pLi (i = 1, 2, 3) , (12)
+where pLi is the coordinate of any point on the i-th line liL and nCi is the normal of the plane back-projected by liI. Finally, the coarse calibration (r0, t0) is obtained, with
+
+R(r0) = RCG · RGL , t0 = tCG .
+
+(13)
+
+D. Calibration Reﬁnement
+
+As the coarse calibration only uses three-line correspondences and lanes are not perfectly parallel in real world, we consider all line features extracted in Sec. III-B and discard the parallel assumption to further reﬁne the coarse calibration by directly optimizing the cost function J , and the reﬁned calibration (ˆr, ˆt) should maximize the cost function:
+
+(ˆr, ˆt) = arg max J (R(r), t) .
+
+(14)
+
+(r,t)
+
+J is non-convex and can be hardly optimized by convex optimization techniques. However, as our coarse calibration can already provide a reasonable and robust initial estimation as shown in Sec. IV-B, we ﬁrst initialize the reﬁnement with the coarse calibration (r0, t0), and subsequently J is optimized by random searching the parameter space around the current optimal parameter. For translation, we sample δt as three independent components (δtx, δty, δtz) between [−t0, t0]. For rotation, we sample δr following axis-angle representation where the axis is sampled on the unit sphere and the angle is sampled within a boundary [−θ0, θ0]. The calibration reﬁnement algorithm is shown in Algorithm 1. In our implementation, we set t0 to be 1 m and θ0 to be 0.1°. The initial step size η and the ﬁnal step size η0 are set to be 1 and 0.001 respectively. The decay factor k is 0.1 and the search count is limited to 10000.
+
+IV. EXPERIMENTS
+A. Experiment Settings
+To evaluate the performance of CRLF, experiments are conducted on two sets of data. The ﬁrst one is the KITTI dataset [29], which is commonly used as a benchmark for studies related to autonomous driving. We adopt the KITTI raw dataset containing original sensor data and calibration ﬁles. The point cloud data are obtained from a Velodyne HDL-64 LiDAR, and images are from the rectiﬁed left RGB camera with a resolution of 1242 × 375. The camera intrinsic parameter from the calibration ﬁle is taken as ground truth and the extrinsic parameter serves as a reference for evaluating the accuracy of CRLF. Our data is selected from various road scenes at intervals of 10 frames to ensure that there is enough disparity between any two frames. In total, 100 frames are collected for evaluation from 3 driving sequences (09/26/2011 drive 0015, 0036, and 0101).
+Additionally, the test data collected by our self-driving cars are used to better demonstrate the generality of CRLF. The images are from a front center camera with a resolution of 1920 × 1200 and the point cloud data is collected from a 64-beam Hesai LiDAR. We also select 100 frames of
+
+Algorithm 1: Extrinsic Calibration Reﬁnement
+Input: initial rotation r0, initial translation t0, initial step size η, step size lower bound η0, max search count max cnt, decay factor k
+Output: reﬁned rotation ˆr, reﬁned translation ˆt ˆr = r0, ˆt = t0; Jmax = J (R(r0), t0); while η ≥ η0 do
+cnt = 0; while cnt < max cnt do
+Sample δθ from [−θ0, θ0]; Sample δt from [−t0, t0]; Sample vector v from the unit sphere; δr = δθ · v; Jcurrent = J (R(η · δr) · R(ˆr), η · δt + ˆt); if Jcurrent > Jmax then
+ˆr = R−1(R(η · δr) · R(ˆr)); ˆt = η · δt + ˆt; Jmax = Jcurrent; end
+cnt++; end
+η=k·η ; end
+
+data to compare with the reference extrinsic parameter, which is obtained through manually selecting feature point correspondences between the point cloud and the image to solve the PnP problem and is carefully tuned under several different scenes.
+To evaluate the performance of CRLF with respect to the reference calibration, we separately measure the error for translation and rotation. Translation error is calculated as the euclidean distance between the two translations as
+
+∆t = ˆt − t 2.
+
+(15)
+
+Rotation error is the geodesic distance based on angle-axis representation, which is deﬁned as:
+
+∆θ = log(R(ˆe)R(e)T ) 2 ,
+
+(16)
+
+where the . gives the magnitude of the angle between any two rotations. We also calculate the mean absolute error (MAE) for the three components of translation, namely ∆tx, ∆ty, and ∆tz, as well as the MAE for the three Euler angles ∆roll, ∆pitch, and ∆yaw, which follow the ZY X representation.
+Our method is implemented in C++ on a desktop computer with an Intel Core i7-8700 CPU and a Nvidia 1660 GPU. The average computation time for each step of the calibration procedure is recorded in Table I. The whole procedure only takes around 0.3 s to run. Moreover, as our method requires a single pair of point cloud and image and is fully-automatic, we conclude that our method is highly efﬁcient and userfriendly to be deployed on a broad scale of AVs.
+
+B. Quantitative Results
+
+We ﬁrst run coarse calibration and compute the error of CRLF on both datasets. The MAE is shown in Table II
+
+Fig. 4. Qualitative results of CRLF. The 1st row are the results on our in-house dataset, and the 2nd row are the results on KITTI dataset. (a): Original images from the camera. (b): Projection results of the line features by the coarse calibration. (c): Projection results of the line features by the reﬁned calibration. (d): Projection results of the whole point cloud on the original image by the reﬁned calibration. The alignment of local regions are marked with pink box and magniﬁed on the right bottom to better visualize the quality of the calibration in (b) and (c).
+
+TABLE I
+
+AVERAGE RUNNING TIME FOR DIFFERENT STEPS OF CRLF
+
+Lane Feature Extractor 0.104s
+
+Coarse Calibration
+
+0.032s
+
+Calibration Reﬁnement 0.175s
+
+TABLE II
+
+MAE FOR TRANSLATION AND ROTATION OF CRLF
+
+Dataset Calib ∆tx(m) ∆ty(m) ∆tz(m) ∆roll(°) ∆pitch(°) ∆yaw(°)
+
+KITTI
+
+Coarse Reﬁned
+
+0.121 0.082
+
+0.067 0.046
+
+0.182 0.097
+
+0.628 0.216
+
+1.043 0.546
+
+0.805 0.492
+
+Ours
+
+Coarse Reﬁned
+
+0.053 0.018
+
+0.117 0.069
+
+0.074 0.015
+
+0.943 0.332
+
+1.092 0.613
+
+0.684 0.395
+
+and the error distribution is visualized in Fig. 5. On both datasets, the coarse calibration can give a reasonable initial value with the maximum translation error less than 0.5 m and the maximum rotation error less than 3°. We can see that about 80% of the translation errors is less than 0.3 m on KITTI and 0.2 m on our own dataset, and 80% of the rotation errors is less than 2.3° and 2° respectively.
+After the coarse calibration, the calibration reﬁnement is applied and the ﬁnal result is compared to the reference calibration. The MAE is also listed in Table II and Fig. 6 shows the cumulative error distribution of the reﬁned calibration, which has a signiﬁcant improvement compared to the coarse calibration on both datasets.
+To further demonstrate the robustness of our reﬁnement
+Fig. 5. Results of the coarse calibration. (a),(b) show the cumulative distribution of the translation and rotation errors on KITTI dataset. (c),(d) show those on our in-house dataset.
+
+Fig. 6. Results of the reﬁned calibration. (a),(b) show the histogram of the translation and rotation errors on KITTI dataset. (c),(d) show those on our in-house dataset.
+Fig. 7. MAE of the reﬁned calibration versus the initial miscalibration error. (a) shows the MAE of translation, and (b) shows the MAE of rotation.
+procedure, we challenge the procedure through applying random transformations to the reference calibration value in the range of [−1 m, 1 m] for translation and [−6°, 6°] for rotation, which are twice the maximum absolute error of coarse calibration respectively. This transformation is applied to each data, and the MAE of the reﬁned calibration versus the miscalibration error of each initial transformation is plotted in Fig. 7. The MAE only slightly increases with the miscalibration error, and this may be caused by the optimization getting stuck at a local maximum occasionally. ∆yaw is around 0.5°on all the miscalibration error, we infer that the constraint information for the global y-axis on image plane is less than others due to the direction of poles and lanes. Nevertheless, the overall convergence performance is stable, and the initial error can be reduced to up to one-tenth after the reﬁnement.
+
+C. Qualitative Results
+To better visualize the performance of CRLF, the point cloud is projected to the image plane using the extrinsic parameter. Results on our in-house dataset and KITTI dataset are shown in Fig. 4. The coarse calibration can already align line features roughly to their corresponding masks in Fig. 4(b). However, since three-line correspondences only provide a spatial constraint, there is still misalignment at global semantic level as shown in the pink box. Fig. 4(c) shows that the reﬁnement procedure corrects the misalignment and projects more points within the mask compared to Fig. 4(b). After the reﬁnement, all line features align well, and Fig. 4(d) demonstrates the overall quality of CRLF, where objects like cars and trees are also well-aligned.
+V. CONCLUSIONS
+In this paper, we propose a novel fully-automatic method, CRLF, for extrinsic parameter calibration between a LiDAR and a camera. We leverage static straight-line-shaped objects including lanes and poles to enrich our potential targets for calibration. A line feature extractor is presented to extract straight-line features in road scenes for both the image and the point cloud. The line features provide not only enough spatial constraints to robustly estimate an accurate initial calibration but also abundant semantic information for further reﬁnement. Qualitative and quantitative results demonstrate the robustness and effectiveness of CRLF. The experiments also show CRLF’s promising potential to be deployed on a large scale of AVs for companies and users in the real world.
+As CRLF can be applied to various scenarios, its performance depends heavily on the line feature extractor, which may suffer from poor environmental conditions, e.g., fog, rain, and night, that affect sensor measurements, as well as unexpected objects that are wrongly extracted by the segmentation models. Moreover, as line-shaped objects can already provide enough spatial constraints, we look forward to using more geometric-shaped objects in different ranges and positions to further improve the performance.
+REFERENCES
+[1] A. Geiger, F. Moosmann, O¨ . Car, and B. Schuster, “Automatic camera and range sensor calibration using a single shot,” in 2012 IEEE International Conference on Robotics and Automation, 2012, pp. 3936–3943.
+[2] W. Wang, K. Sakurada, and N. Kawaguchi, “Reﬂectance intensity assisted automatic and accurate extrinsic calibration of 3d lidar and panoramic camera using a printed chessboard,” Remote Sensing, vol. 9, no. 8, p. 851, 2017.
+[3] L. Zhou, Z. Li, and M. Kaess, “Automatic extrinsic calibration of a camera and a 3d lidar using line and plane correspondences,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2018, pp. 5562–5569.
+[4] P. An, T. Ma, K. Yu, B. Fang, J. Zhang, W. Fu, and J. Ma, “Geometric calibration for lidar-camera system fusing 3d-2d and 3d-3d point correspondences,” Optics Express, vol. 28, no. 2, pp. 2122–2141, 2020.
+[5] Z. Pusztai and L. Hajder, “Accurate calibration of lidar-camera systems using ordinary boxes,” in Proceedings of the IEEE International Conference on Computer Vision Workshops, 2017, pp. 394–402.
+[6] J. Levinson and S. Thrun, “Automatic online calibration of cameras and lasers.” in Robotics: Science and Systems, vol. 2, 2013, p. 7.
+[7] Y. Zhu, C. Li, and Y. Zhang, “Online camera-lidar calibration with sensor semantic information,” in 2020 IEEE International Conference on Robotics and Automation (ICRA), 2020, pp. 4970–4976.
+
+[8] W. Wang, S. Nobuhara, R. Nakamura, and K. Sakurada, “Soic: Semantic online initialization and calibration for lidar and camera,” arXiv preprint arXiv:2003.04260, 2020.
+[9] Y. Park, S. Yun, C. S. Won, K. Cho, K. Um, and S. Sim, “Calibration between color camera and 3d lidar instruments with a polygonal planar board,” Sensors, vol. 14, no. 3, pp. 5333–5353, 2014.
+[10] M. Vel’as, M. Sˇ paneˇl, Z. Materna, and A. Herout, “Calibration of rgb camera with velodyne lidar,” in WSCG 2014 Communication Papers Proceedings, 2014, pp. 135–144.
+[11] H. Cai, W. Pang, X. Chen, Y. Wang, and H. Liang, “A novel calibration board and experiments for 3d lidar and camera calibration,” Sensors, vol. 20, no. 4, p. 1130, 2020.
+[12] G. Pandey, J. R. McBride, S. Savarese, and R. M. Eustice, “Automatic targetless extrinsic calibration of a 3d lidar and camera by maximizing mutual information.” in AAAI, 2012.
+[13] Z. Taylor and J. Nieto, “Automatic calibration of lidar and camera images using normalized mutual information,” in 2013 IEEE International Conference on Robotics and Automation (ICRA), 2013.
+[14] K. Irie, M. Sugiyama, and M. Tomono, “Target-less camera-lidar extrinsic calibration using a bagged dependence estimator,” in 2016 IEEE International Conference on Automation Science and Engineering (CASE), 2016, pp. 1340–1347.
+[15] Z. Taylor, J. Nieto, and D. Johnson, “Multi-modal sensor calibration using a gradient orientation measure,” Journal of Field Robotics, vol. 32, no. 5, pp. 675–695, 2015.
+[16] Z. Taylor and J. Nieto, “Motion-based calibration of multimodal sensor arrays,” in 2015 IEEE International Conference on Robotics and Automation (ICRA), 2015, pp. 4843–4850.
+[17] R. Ishikawa, T. Oishi, and K. Ikeuchi, “Lidar and camera calibration using motions estimated by sensor fusion odometry,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2018, pp. 7342–7349.
+[18] K. Huang and C. Stachniss, “Extrinsic multi-sensor calibration for mobile robots using the gauss-helmert model,” in 2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2017, pp. 1490–1496.
+[19] H.-J. Chien, R. Klette, N. Schneider, and U. Franke, “Visual odometry driven online calibration for monocular lidar-camera systems,” in 2016 23rd International conference on pattern recognition (ICPR), 2016, pp. 2848–2853.
+[20] C. Shi, K. Huang, Q. Yu, J. Xiao, H. Lu, and C. Xie, “Extrinsic calibration and odometry for camera-lidar systems,” IEEE Access, vol. 7, pp. 120 106–120 116, 2019.
+[21] A. Napier, P. Corke, and P. Newman, “Cross-calibration of push-broom 2d lidars and cameras in natural scenes,” in 2013 IEEE International Conference on Robotics and Automation, 2013, pp. 3679–3684.
+[22] N. Schneider, F. Piewak, C. Stiller, and U. Franke, “Regnet: Multimodal sensor registration using deep neural networks,” in 2017 IEEE intelligent vehicles symposium (IV), 2017, pp. 1803–1810.
+[23] G. Iyer, R. K. Ram, J. K. Murthy, and K. M. Krishna, “Calibnet: Geometrically supervised extrinsic calibration using 3d spatial transformer networks,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2018, pp. 1110–1117.
+[24] M. A. Fischler and R. C. Bolles, “Random sample consensus: a paradigm for model ﬁtting with applications to image analysis and automated cartography,” Communications of the ACM, vol. 24, no. 6, pp. 381–395, 1981.
+[25] C. Yu, J. Wang, C. Peng, C. Gao, G. Yu, and N. Sang, “Bisenet: Bilateral segmentation network for real-time semantic segmentation,” in 2018 European conference on computer vision (ECCV), 2018, pp. 325–341.
+[26] P. Kra¨henbu¨hl and V. Koltun, “Efﬁcient inference in fully connected crfs with gaussian edge potentials,” in Advances in neural information processing systems, 2011, pp. 109–117.
+[27] R. O. Duda and P. E. Hart, “Use of the hough transformation to detect lines and curves in pictures,” Communications of the ACM, vol. 15, no. 1, pp. 11–15, 1972.
+[28] C. Xu, L. Zhang, L. Cheng, and R. Koch, “Pose estimation from line correspondences: A complete analysis and a series of solutions,” IEEE transactions on pattern analysis and machine intelligence, vol. 39, no. 6, pp. 1209–1222, 2016.
+[29] A. Geiger, P. Lenz, C. Stiller, and R. Urtasun, “Vision meets robotics: The kitti dataset,” International Journal of Robotics Research (IJRR), vol. 32, no. 11, p. 1231–1237, 2013.
+

@@ -1,0 +1,459 @@
+SSC: Semantic Scan Context for Large-Scale Place Recognition
+Lin Li1, Xin Kong1, Xiangrui Zhao1, Tianxin Huang1 and Yong Liu1,∗
+
+arXiv:2107.00382v2 [cs.CV] 10 Jul 2021
+
+Abstract— Place recognition gives a SLAM system the ability to correct cumulative errors. Unlike images that contain rich texture features, point clouds are almost pure geometric information which makes place recognition based on point clouds challenging. Existing works usually encode low-level features such as coordinate, normal, reﬂection intensity, etc., as local or global descriptors to represent scenes. Besides, they often ignore the translation between point clouds when matching descriptors. Different from most existing methods, we explore the use of high-level features, namely semantics, to improve the descriptor’s representation ability. Also, when matching descriptors, we try to correct the translation between point clouds to improve accuracy. Concretely, we propose a novel global descriptor, Semantic Scan Context, which explores semantic information to represent scenes more effectively. We also present a two-step global semantic ICP to obtain the 3D pose (x, y, yaw) used to align the point cloud to improve matching performance. Our experiments on the KITTI dataset show that our approach outperforms the state-of-theart methods with a large margin. Our code is available at: https://github.com/lilin-hitcrt/SSC.
+
+I. INTRODUCTION
+Simultaneous Localization and Mapping (SLAM) has rapidly developed in recent decades as critical technologies for autonomous vehicles and robots. Place recognition represents the ability of robots to recognize previously visited places, which can build global constraints for the SLAM system to eliminate the odometry’s cumulative errors and establish a globally consistent map [1]. Place recognition is usually conducted by using images or point clouds. Since point cloud data is rarely affected by environmental factors such as illumination and seasonal changes, LiDAR-based methods have received widespread attention in recent years.
+Most existing works on LiDAR-based place recognition are achieved by encoding the point cloud into global or local descriptors and then matching the descriptors. They usually use low-level features such as coordinates [2]–[6], normal [7], reﬂection intensity [7]–[10], etc. In recent years, with the development of point cloud deep learning, many LiDARbased object detection [11] and semantic segmentation [12], [13] methods have been proposed, making it possible to obtain semantic information from point clouds. However, there are still only a few LiDAR-based works trying to use semantic information [7], [14], [15].
+For place recognition, when a robot passes through a place visited before, it does not mean that the two poses are the same. Instead, the robot may walk through the original area from any direction, and there may be a small amount of
+1Lin Li, Xin Kong, Xiangrui Zhao, Tianxin Huang and Yong Liu are with the Institute of Cyber-Systems and Control, Zhejiang University, Hangzhou 310027, P. R. China. (*Yong Liu is the corresponding author, email: yongliu@iipc.zju.edu.cn).
+
+Fig. 1: An example of place recognition using semantic scan context. It is a partial map of the KITTI sequence 08, where the frames 720 and 1500 form a reverse loop. The lower part of the ﬁgure is the semantic scan context corresponding to the two frames. Since the directions of them are opposite, the descriptors are quite different, while the aligned one shown in Fig. 2 is easy to distinguish.
+translation from the original position. Many existing works consider the robot’s orientation, namely rotation, and realize the invariance of rotation [3], [4], [10], [14]. They may think that the small translation will not strongly impact the recognition result and therefore ignore it. However, we ﬁnd that simply ignoring the translation for the scan contextbased methods will greatly reduce the similarity of the positive samples, making them difﬁcult to identify.
+In this paper, we propose a novel global descriptor named Semantic Scan Context (SSC), which explores semantic information to enhance the expressive power of descriptors. We also propose a two-step global semantic ICP that can produce reliable results regardless of the pose initialization, to obtain the 3D pose (x, y, yaw) of the point cloud. The pose is then used to align the point clouds to reduce the inﬂuence of rotation and translation on the similarity of the descriptors. Furthermore, it can also provide good initial values for 6D ICP algorithms to reﬁne the global pose further. Fig. 1 is a demonstration of our results. The main contribution is summarized as follows:
+• We propose a novel global descriptor for LiDAR-based place recognition, which exploits semantic information
+
+Fig. 2: The pipeline of our approach. It mainly consists of two parts: two-step global semantic ICP and Semantic Scan Context. First, we conduct semantic segmentation on the raw point cloud. Then we use semantic information to retain representative objects and project them onto the x-y plane. The two-step global semantic ICP is performed on the projected cloud to get the 3D pose (∆x, ∆y, θ). Finally, we use the 3D pose to align the original clouds and generate global descriptors (Semantic Scan Context). The similarity score is obtained by matching SSC.
+
+to encode the 3D scenes effectively. • We propose a two-step global semantic ICP, which
+doesn’t require any initial values, to obtain the 3D pose (x, y, yaw) of the point clouds. • We align point clouds with the obtained 3D poses to eliminate the inﬂuence of rotation and translation error on the similarity of the descriptors, which can also further beneﬁt the SLAM system as good initial poses. • Exhaustive experiments on the KITTI odometry dataset show that our approach achieves state-of-the-art performance both in place recognition and pose estimation.
+II. RELATED WORK
+According to the features used, we can divide the place recognition methods into three categories: geometry-based, semi-semantic-based, semantic-based.
+Geometry-based methods: Spin image [2] establishes a local coordinate system for each point, then projects the point into the 2D space and counts the number of points in different areas in the 2D space to form a spin image. ESF [16] proposes a shape descriptor that combines angle, point-distance, and area to boost the recognition rate. M2DP [5] projects the point cloud into multiple 2D planes and generates a density signature for each plane’s points. The left and right singular vectors of those signatures are used as the global descriptors. Scan context [3], [4] converts the point cloud to polar coordinates and then divides it into blocks along the azimuth and radial directions. Lastly, it encodes the z coordinate of the highest point in each block as a 2D global descriptor. LocNet [6] divides a point cloud into rings, generates a distance histogram for each
+
+ring, and stitches all histograms to form a global descriptor. Then a siamese network is used to score the similarity between the descriptors. LiDAR Iris [17] extracts a binary signature image for each point cloud then uses the Hamming distance of two corresponding binary signature images as the similarity. Seed [18] segments the point cloud into different objects and encodes the topological information of the segmented objects into the global descriptor. The above methods have achieved good results by encoding low-level geometric structures into descriptors. It can be expected that integrating more advanced features can further enhance the discriminative power of descriptors.
+Semi-semantic-based methods: Some methods use nongeometric information to construct descriptors, such as reﬂection intensity or learning-based features extracted by neural networks. Such features are related to the object type but do not clearly indicate the semantic category, so we classify these methods as semi-semantic based. ISHOT [9] and ISC [10] exploit the intensity information of the point cloud for place recognition. SegMatch [19] and SegMap [20] cluster a point cloud into segments. Then they extract features for each segment and use the kNN algorithm to identify corresponds. PointNetVLAD [21] combines PointNet [22] and NetVLAD [23] to extract global descriptors from the 3D point clouds end-to-end. L3-Net [24] selects key points from the given point cloud then uses a PointNet to learn local descriptors for each key point. OREOS [25] projects the 3D point cloud into a 2D range image and proposes a convolutional neural network to extract the global descriptor. DH3D [26] designs a siamese network to learn 3D local
+
+features from the raw 3D point clouds, then use an attention mechanism to aggregate these local features as the global descriptor. LPD-Net [27] proposes the adaptive local feature extraction module and the graph-based neighborhood aggregation module to extract local features of the point cloud; then, as the PointNetVLAD, they use the NetVLAD to generate the global descriptor. MinkLoc3D [28] uses a sparse voxelized point cloud representation and sparse 3D convolutions to compute a discriminative 3D point cloud descriptor. SeqSphereVLAD [29] projects the point cloud onto a spherical view, extracts features on it and sequences those features to form a descriptor. SpoxelNet [30] voxelized the point cloud in spherical coordinates and deﬁnes the occupancy of each voxel in ternary values. Then they use a neural network to extract the global descriptor. The above methods combine more advanced features with geometric features. However, most of them use neural networks to extract abstract features, which are more complicated and not well interpretable.
+Semantic-based methods: SGPR [14] represents the scene as a semantic graph then uses a graph similarity network to score the similarity of the graphs. GOSMatch [15] proposes a new global descriptor that is generated from the spatial relationship between semantics. It also proposes a coarse-to-ﬁne strategy to efﬁciently search loop closures and gives an accurate 6-DOF initial pose estimation. The two methods represent the scene as a graph and abstract the object as a node in the graph, which will cause the loss of features such as the size of each object. OverlapNet [7] designed a deep neural network that uses different types of information, such as intensity, normal, and semantics generated from LiDAR scans, to provide overlap and relative yaw angle estimates between paired 3D scans. However, it is too slow in preprocessing due to the need to calculating the normal and inferring the complex network backbone. To use the semantic information more effectively, we propose our Semantic Scan Context approach.
+III. METHODOLOGY
+In this section, we present our semantic scan context approach. Different from other scan context-based methods that use incomplete semantic information and ignore small translations between point clouds, we explore to exploit full semantic information and emphasize that the small translation between point cloud pairs has a signiﬁcant inﬂuence on the accuracy of recognition.
+As shown in Fig. 2, our method consists of two main parts: two-step global semantic ICP and Semantic Scan Context. The two-step global semantic ICP is divided into Fast Yaw Angle Calculate and Fast Semantic ICP. First, we deﬁne a point cloud frame as P = {p1, p2, · · · , pn}, with each point pi = [xi, yi, zi, ηi], ηi represent the semantic label of pi. Given a pair of point clouds (P1, P2), we ﬁrst use our Fast Yaw Angle Calculate method to get the relative yaw angle θ between them. Then we use the Fast Semantic ICP to calculate their relative translation (∆x, ∆y) in the x-y plane. Through the above two steps, we get the relative poses
+
+(a) Yaw Aligned
+
+(b) Translation Aligned
+
+Fig. 3: An illustration of the two-step global semantic ICP.
+(∆x, ∆y, θ) of the two frames of point clouds in 3D pose space. In order to eliminate the inﬂuence of rotation (e.g., reverse loop closures) and small translation on recognition, we use the obtained relative pose to align point cloud P2. We mark the aligned point cloud as Pa. Finally, we use our global descriptor – the Semantic Scan Context to describe (P1, Pa) as (S1, S2). The similarity score is obtained by comparing S1 and S2.
+A. Global Semantic ICP
+It is known that the general ICP algorithm based on local iterative optimization is susceptible to local minimums [31]. For place recognition, we usually cannot get a valid initial value, which leads to the failure of the general ICP algorithm. To solve this, we propose the two-step global semantic ICP algorithm consisting of Fast Yaw Angle Calculate and Fast Semantic ICP. Beneﬁted from the use of semantic information, our algorithm does not require any initial values to get satisfactory results.
+Fast Yaw Angle Calculate. For scan context based methods, columns of their descriptor represent the yaw angle. The pure rotation of the LiDAR in the horizontal plane will cause the column shift of their descriptor. Scan context and Intensity Scan Context get the similarity score and the yaw angle at the same time. Speciﬁcally, they calculate similarity (or distance) with all possible column-shifted descriptors and ﬁnd the maximum similarity (or minimum distance). However, there are two main disadvantages. Firstly, it’s inefﬁcient to compare the whole 2D descriptors by shifting. Secondly, they still try to get the maximum score for point clouds from different places (not loop closure). This obviously makes it more prone to false positives. To draw the above issues, we propose the semantic-based fast yaw angle calculate method.
+Given a point cloud pair (P1, P2), we select representative objects such as buildings, tree trunks, and trafﬁc signs based on semantic information. Then we convert the ﬁltered clouds to polar coordinate in the x-y plane:
+
+pi = [ri, ϕi, xi, yi, ηi]
+
+ri = x2i + yi2
+
+(1)
+
+ϕi
+
+=
+
+arctan(
+
+yi xi
+
+)
+
+where pi is the ith point in each converted cloud, ri and ϕi represent polar diameter and polar angle, respectively.
+
+Fig. 4: An example of generating SSC. ρ and θ represent the polar diameter and polar angle, respectively. A sector corresponds to a descriptor column, while a ring corresponds to a row of the descriptor.
+
+Each converted cloud is then segmented to Na sectors by yaw angle. We only keep the point with the smallest polar diameter in each sector. Finally, we get two clouds PI1 and PI2, with Na elements. We sort the points in PI1 and PI2 according to the azimuth angle and save their corresponding polar diameters as vectors R1 and R2. Similar to the scan context, the shift of the column vector is related to the yaw
+
+angle:
+
+shif t = argmin Ψ (R1, R2i )
+
+i,i∈[0,Na ]
+
+360 × shif t
+
+(2)
+
+θ = 360 −
+
+Na
+
+where R2i is R2 shifted by ith element and Ψ is deﬁned as:
+
+Ψ (R1, R2i ) = R1 − R2i 1
+
+(3)
+
+Compared with Scan Context and Intensity Scan Context, our method only needs to compare one-dimensional vectors; therefore, it is more efﬁcient. Moreover, our method does not obtain the angle via maximizing the score, which is helpful to identify non-loop-closure point-cloud pairs. Fig. 3 shows the result of Fast Yaw Angle Calculate.
+Fast Semantic ICP. Though most works ignore translation between point clouds, ignoring the translation causes considerable declines in our experiments. In fact, for methods based on scan context, translation will affect both the row and column of the descriptor. We can’t get the best result just by the column-shifted descriptor. Therefore, we propose a fast semantic ICP algorithm to correct the translation between point clouds.
+To ﬁnd the relative translation, we ﬁrstly rotate PI2 to the
+
+same direction as PI1, and the rotated point cloud is PIa, which is deﬁned as:
+
+xai = xicos(θ) − yisin(θ)
+
+(4)
+
+yai = xisin(θ) + yicos(θ)
+
+where (xi, yi) and (xai, yai) represent the ith point in PI2 and PIa respectively. Our ICP problem can be deﬁned as:
+
+Na
+
+(∆x, ∆y) = argmin L = argmin Γ(ηai, ηri)
+
+∆x,∆y
+
+∆x,∆y i=1
+
+(5)
+
+× (xai + ∆x − xri)2 + (yai + ∆y − yri)2 2
+
+where (xri, yri) represents the corresponding point of (xai, yai), which is the point closest to (xai, yai) in PI1, ηai and ηri are semantic labels of the points. If ηai is equal to ηri, then the output of Γ(ηai, ηri) is 1; otherwise, 0. As our point clouds are ordered, we can search for the corresponding
+points near the position where the yaw angle is consistent
+with the target point. Speciﬁcally, our search interval for the ith target point is:
+
+[i + shif t − Nl , i + shif t + Nl ]
+
+(6)
+
+2
+
+2
+
+where Nl is the length of search interval and shif t is deﬁned in Eq. 2. After a certain number of iterations, we can get the
+
+relative translation between the input point clouds, shown in
+
+Fig. 3.
+
+B. Semantic Scan Context
+
+Scan Context and Intensity Scan Context uses the points’ height and reﬂection intensity as features, respectively. Their methods essentially take advantage of the different characteristics of different objects in the scene. However, height and reﬂection intensity is only low-level features of the object which are not representative enough. We explore to use the high-level semantic features to represent scenes and thus propose the Semantic Scan Context descriptor.
+
+Descriptor deﬁnition. Given a point cloud P , we ﬁrst convert it to the polar coordinate system as we did in Section III-A. Then, like scan context, we divide the point cloud into Ns × Nr blocks along the azimuthal and radial directions. Each block is represented by:
+
+Bij
+
+=
+
+{ηk |
+
+(i
+
+−
+
+1) · Rmax Nr
+
+≤
+
+rk
+
+<
+
+i · Rmax , Nr
+
+(j − 1) · 2π
+
+j · 2π
+
+(7)
+
+Ns
+
+− π ≤ ϕk < Ns − π}
+
+where Rmax is the the maximum effective measurement distance of LiDAR, i ∈ [1, Nr] and j ∈ [1, Ns]. Our descriptor can be deﬁned by:
+
+S(i, j) = f (Bij) = argmax E(η)
+
+(8)
+
+η∈Bij
+
+f is an encoding function to encode features of Bij. Note that if Bij = ∅, f (Bij) = 0. We manually set the priority of different semantics in function E to show their represen-
+tativeness. We believe objects that appear less frequently in
+
+(a) 00
+
+(b) 02
+
+(c) 05
+
+(d) 06
+
+(e) 07
+Fig. 5: Precision-Recall curves on KITTI dataset.
+
+(f) 08
+
+TABLE I: F1 max scores and Extended Precision on KITTI dataset
+
+Methods SC [3] ISC [10] M2DP [5] LI [17] PV [21] ON [7] SGPR [14] Ours-RN Ours-SK
+
+00 0.750/0.609 0.657/0.627 0.708/0.616 0.668/0.626 0.779/0.641 0.869/0.555 0.820/0.500 0.939/0.826 0.951/0.849
+
+02 0.782/0.632 0.705/0.613 0.717/0.603 0.762/0.666 0.727/0.691 0.827/0.639 0.751/0.500 0.890/0.745 0.891/0.748
+
+05 0.895/0.797 0.771/0.727 0.602/0.611 0.768/0.747 0.541/0.536 0.924/0.796 0.751/0.531 0.941/0.900 0.951/0.903
+
+06 0.968/0.924 0.842/0.816 0.787/0.681 0.913/0.791 0.852/0.767 0.930/0.744 0.655/0.500 0.986/0.973 0.985/0.969
+
+07 0.662/0.554 0.636/0.638 0.560/0.586 0.629/0.651 0.631/0.591 0.818/0.586 0.868/0.721 0.870/0.773 0.875/0.805
+
+08 0.607/0.569 0.408/0.543 0.073/0.500 0.478/0.562 0.037/0.500 0.374/0.500 0.750/0.520 0.881/0.732 0.940/0.932
+
+Mean 0.777/0.681 0.670/0.661 0.575/0.600 0.703/0.674 0.595/0.621 0.790/0.637 0.766/0.545 0.918/0.825 0.932/0.868
+
+F1 max scores and Extended Precision: F1 max scores / Extended Precision. The best scores are marked in bold and the second best scores are underlined.
+
+the scene are more representative (e.g., trafﬁc signs are more
+representative than roads).
+Similarity Scoring. Given aligned clouds P1 and Pa, we can get their descriptors S1 and S2 by Eq. 8. Then the similarity score between them can be calculated by:
+
+I(S1(i, j) = S2(i, j))
+
+score =
+
+1≤i≤Nr 1≤j≤Ns
+
+(9)
+
+I(S1(i, j) = 0 or S2(i, j) = 0)
+
+1≤i≤Nr 1≤j≤Ns
+
+where I is the indicator function, deﬁned by:
+
+1 x is true
+
+I(x) =
+
+(10)
+
+0 x is f alse
+
+Fig. 4 shows Semantic Scan Context creation.
+
+IV. EXPERIMENTS A. Experiment Setup
+We conduct experiments on the KITTI odometry dataset [32] collected by a 64-ring LiDAR, which contains 11
+
+training sequences (00-10) with ground truth poses. We choose sequences with loop-closure (00,02,05,06,07,08) for evaluation and note that sequence 08 has reverse loops while others are in the same direction. Similar to SGPR [14], we regard the point cloud pair with a relative distance less (greater) than 3m (20m) as a positive (negative) sample. Since there are too many negative samples, we only select a part of the negative samples for evaluation. Speciﬁcally, if there are Np positive samples in a sequence, we will randomly select α · Np negative samples. We can adjust the proportion of negative samples by changing the coefﬁcient α.
+The ground-truth semantic labels are from the SemanticKITTI dataset [33]. We also test our method with the semantic segmentation algorithm (RangeNet++ [34]) to prove that our method can be applied to noisy predictions in real situations. In our experiments, we set Na = 360, Nl = 20, Ns = 360, Nr = 50. All experiments are done on the same system with an Intel i7-9750H @3.00GHz CPU with
+
+(a) Average F1 max scores
+
+(b) Average EP
+
+Fig. 6: Average F1 max score and Average Extended Precision corresponding to different α.
+
+16 GB RAM.
+
+B. Place Recognition Performance
+
+As mentioned in Section IV-A, we use both ground-truth
+
+semantic labels (Ours-SK) and predicted semantic labels
+
+(Ours-RN) for testing. We compare our approach with the
+
+state-of-the-art methods, including Scan Context [3] (SC),
+
+Intensity Scan Context [10] (ISC), M2DP [5], LiDAR Iris
+
+[17] (LI), PointNetVLAD [21] (PV), OverlapNet [7] (ON),
+
+and SGPR [14]. For SGPR, we use their pre-trained models
+
+trained with the 1-fold strategy. As we cannot reproduce the
+
+results of OverlapNet, we use the pre-trained model provided
+
+by the author. The model is trained on sequences 03-10, so
+
+sequences 05, 06, 07, 08 are included in the training set.
+
+Fixed α. In this experiment, we set α to 100, which means
+
+the number of negative samples is 100Np. Fig. 5 shows the precision-recall curve of each method. Additionally, we also
+
+use the maximum F1 score and Extended Precision [35] (EP)
+
+shown in Tab. I to analyze the performance. The F1 score is
+
+deﬁned as:
+
+P ×R
+
+F1 = 2 × P + R
+
+(11)
+
+where P and R represent the Precision and Recall, respec-
+
+tively; F1 is the harmonic mean of P and R. It treats P and R as equally important and measures the overall performance
+
+of classiﬁcation. The Extended Precision is deﬁned as:
+
+1
+
+EP = 2 (PR0 + RP 100)
+
+(12)
+
+where PR0 is the precision at minimum recall, and RP 100 is the max recall at 100% precision. EP is speciﬁcally
+
+designed metrics for place recognition algorithms.
+
+As shown in Fig. 5 and Tab. I, Ours-SK surpasses other
+
+methods in all indicators of all sequences with a large
+
+margin. Especially in sequence 08, which has only reverse
+
+loops, the performance of other methods drops signiﬁcantly
+
+while our method still performs well. This indicates that
+
+our method is robust to view angle changes. OverlapNet
+
+performs well on most sequences except 08. We guess this
+
+TABLE II: Yaw error on KITTI dataset
+
+sequences 00 02 05 06 07 08
+Average
+
+SC (deg) 11.526 11.301 18.394 4.074 21.862 49.170 19.388
+
+ISC (deg) 0.829 1.343 0.904 0.534 0.684 3.856 1.358
+
+ON (deg) 2.595 4.911 3.329 1.124 2.233 68.622 13.802
+
+Ours-SK (deg) 0.891 1.142 0.653 0.759 0.512 1.878 0.973
+
+is because it uses the normal of the point cloud, which will change as the point cloud rotates. Therefore, this method cannot robustly handle reverse loops. SGPR works well on indicator the F1 max score but poorly on the Extended Precision. We ﬁnd that it gives some negative samples a huge score, which causes the recall to be almost zero when the accuracy reaches 100%. The result of Ours-RN is slightly worse than Ours-SK as expected. As the difference is not obvious, it means that our approach can adapt to semantic segmentation algorithms for actual systems.
+Change α. In this experiment, we change the value of α to analyze the inﬂuence of the number of negative samples on those algorithms. Fig. 6 shows the Average F1 max score and Average Extended Precision corresponding to different α. It clearly shows that our method performs better than others no matter how much α is taken. As α increases, the performance of all methods gradually decreases, but our method is less affected, showing that our method can effectively identify negative samples. For place recognition, negative samples are generally far more than positive samples, which is one key reason why our method leads in metrics far ahead. Moreover, identifying negative samples is signiﬁcant as false positives will bring fatal crashes to the SLAM system.
+
+C. Pose Accuracy
+As described in Section III-A, our approach can estimate the 3D relative pose (∆x, ∆y, θ), while most other methods cannot estimate pose or can only estimate 1D pose (yaw). We compare our method with Scan Context, Intensity Scan
+
+TABLE IV: Average time cost on KITTI 08
+
+Methods SC ISC Ours
+
+Size 20 × 60 20 × 90 50 × 360
+
+Description 4.825 3.094 2.563
+
+Retrieval 0.158 0.800 0.066
+
+The unit of time in the table is milliseconds.
+
+ICP -
+2.126
+
+Total 4.983 3.894 4.755
+
+Fig. 7: Translation error.
+
+TABLE III: Contribution of individual components
+
+Yaw IC√P Sem√antic F1/EP
+
+Decrease
+
+√
+
+√
+
+0.896/0.820 3.6%/4.8%
+
+√√
+
+0.757/0.685 17.5%/18.3%
+
+√√
+
+√
+
+0.775/0.762 15.7%/10.6%
+
+0.932/0.868 0.0%/0.0%
+
+Context, and Overlap. The ground-truth pose is calculated by:
+
+T = T1−1T2
+
+T (2, 1) (13)
+
+(∆x, ∆y, θ) = (T (1, 3), T (2, 3), arctan(
+
+))
+
+T (1, 1)
+
+where T1 ∈ SE(3) and T2 ∈ SE(3) represent the pose of P 1 and P 2, respectively. Since the pitch and roll angles are hardly changed in autonomous vehicles, we ignore them.
+Tab. II shows the relative yaw error on the KITTI dataset. We can see that our method outperforms other methods in terms of the average relative yaw error. Especially in the challenging sequence 08, affected by the reverse loop, most methods perform poorly, while our method can still accurately estimate the yaw angle. This again shows that our method can handle the reverse loop well. As mentioned in Section IV-B, OverlapNet performs poorly due to its inability to handle reverse loops.
+Fig. 7 shows the relative translation error of our approach on the KITTI dataset. As shown, our method can estimate accurate relative translation, which is currently not possible with other methods to our knowledge. Thus, our Fast Yaw Angle Calculate and Fast Semantic ICP approaches can give accurate 3D pose estimation. This can provide a good initial value for the ICP algorithm to obtain a 6D pose or directly serve as a global constraint in the SLAM system.
+
+D. Ablation Study
+We design an ablation study to investigate the contribution of each component. Speciﬁcally, we remove or replace a module at a time and then calculate the F1 max scores and Extended Precision. To show the contribution of our Fast Yaw Angle Calculate method, we replace this module with the method used in scan context – shift the column
+
+of descriptors and calculate the maximum similarity score while obtaining the yaw angle. Similarly, we replace the semantic label in the descriptor by maximum z to see semantic contribution. To evaluate the contribution of our Fast Semantic ICP approach, we directly set ∆x and ∆y to 0. As shown in Tab. III, after removing Yaw, ICP, and Semantic, the average F1 max score decrease by 3.6%, 17.5%, 15.7%, and the average Extended Precision decrease by 4.8%, 18.3%, 10.6%. Therefore, the following conclusions can be drawn:
+• Compared with other methods, our approach can get a more accurate yaw angle and translation.
+• As we emphasized, the small translation has a significant impact on scan context-based methods. Simply ignoring the translation will greatly weaken the performance.
+• High-level features, like semantics, can bring considerable improvements in the scene description.
+E. Efﬁciency
+To evaluate the efﬁciency, we set α to 1 and compare the average time cost of our method with Scan Context and Intensity Scan Context on sequence 08. As shown in Tab. IV, the total time cost of our approach is acceptable. As we use the obtained 3D pose to align the point clouds in advance, we don’t need to shift the column of descriptors during the matching stage, so our retrieval speed is extremely fast. Our two-step global semantic ICP only takes 2.126 milliseconds on average. This algorithm is fast due to the following reasons. Firstly, since we only keep Na (360 taken in our experiments) points, the computational cost is greatly reduced compared to the original point cloud (about 120,000 points). Secondly, We divide the algorithm into two steps, ﬁrst calculate the yaw angle, and then iteratively calculate ∆x and ∆y, which simpliﬁes the algorithm and speeds up the calculation. Thirdly, when calculating ∆x and ∆y, we use the yaw angle to align the input clouds in advance. Therefore we don’t need to traverse the entire point cloud when looking for the corresponding points. Instead, we can ﬁnd them near the corresponding positions, which greatly reduces the number of searches.
+V. CONCLUSION
+In this paper, we propose a novel semantic-based global descriptor for place recognition. We propose a two-step global semantic ICP to obtain the 3D pose (x, y, yaw) of the point cloud pair, aligning the point clouds to improve the descriptor matching accuracy. In addition, it can provide good initial values for point cloud registration. We achieve leading performance on the KITTI odometry dataset compared to the state-of-the-art methods.
+
+Our method also has some limitations. Like most place
+recognition methods, our method does not consider pitch
+angle and roll angle. Therefore, our method may fail in some
+extreme scenarios.
+In the future work, we will try to solve the above problems
+and further explore the application of semantic information
+in LiDAR-based SLAM systems.
+REFERENCES
+[1] A. Angeli, D. Filliat, S. Doncieux, and J. Meyer, “Fast and incremental method for loop-closure detection using bags of visual words,” IEEE Transactions on Robotics, vol. 24, no. 5, pp. 1027–1037, 2008.
+[2] A. E. Johnson and M. Hebert, “Using spin images for efﬁcient object recognition in cluttered 3d scenes,” IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 21, no. 5, pp. 433–449, 1999.
+[3] G. Kim and A. Kim, “Scan context: Egocentric spatial descriptor for place recognition within 3d point cloud map,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 4802–4809, 2018.
+[4] G. Kim, B. Park, and A. Kim, “1-day learning, 1-year localization: Long-term lidar localization using scan context image,” IEEE Robotics and Automation Letters, vol. 4, no. 2, pp. 1948–1955, 2019.
+[5] L. He, X. Wang, and H. Zhang, “M2dp: A novel 3d point cloud descriptor and its application in loop closure detection,” in 2016 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 231–237, 2016.
+[6] H. Yin, L. Tang, X. Ding, Y. Wang, and R. Xiong, “Locnet: Global localization in 3d point clouds for mobile vehicles,” in 2018 IEEE Intelligent Vehicles Symposium (IV), pp. 728–733, 2018.
+[7] X. Chen, T. La¨be, A. Milioto, T. Ro¨hling, O. Vysotska, A. Haag, J. Behley, and C. Stachniss, “OverlapNet: Loop Closing for LiDARbased SLAM,” in Proceedings of Robotics: Science and Systems (RSS), 2020.
+[8] K. P. Cop, P. V. K. Borges, and R. Dube´, “Delight: An efﬁcient descriptor for global localisation using lidar intensities,” in 2018 IEEE International Conference on Robotics and Automation (ICRA), pp. 3653–3660, 2018.
+[9] J. Guo, P. V. K. Borges, C. Park, and A. Gawel, “Local descriptor for robust place recognition using lidar intensity,” IEEE Robotics and Automation Letters, vol. 4, no. 2, pp. 1470–1477, 2019.
+[10] H. Wang, C. Wang, and L. Xie, “Intensity scan context: Coding intensity and geometry relations for loop closure detection,” in 2020 IEEE International Conference on Robotics and Automation (ICRA), pp. 2095–2101, 2020.
+[11] S. Shi, C. Guo, L. Jiang, Z. Wang, J. Shi, X. Wang, and H. Li, “Pvrcnn: Point-voxel feature set abstraction for 3d object detection,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, 2020.
+[12] X. Zhu, H. Zhou, T. Wang, F. Hong, Y. Ma, W. Li, H. Li, and D. Lin, “Cylindrical and asymmetrical 3d convolution networks for lidar segmentation,” arXiv preprint arXiv:2011.10033, 2020.
+[13] H. Tang, Z. Liu, S. Zhao, Y. Lin, J. Lin, H. Wang, and S. Han, “Searching efﬁcient 3d architectures with sparse point-voxel convolution,” in European Conference on Computer Vision, 2020.
+[14] X. Kong, X. Yang, G. Zhai, X. Zhao, X. Zeng, M. Wang, Y. Liu, W. Li, and F. Wen, “Semantic graph based place recognition for 3d point clouds,” in 2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 8216–8223, 2020.
+[15] Y. Zhu, Y. Ma, L. Chen, C. Liu, M. Ye, and L. Li, “Gosmatch: Graphof-semantics matching for detecting loop closures in 3d lidar data,” in 2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 5151–5157, 2020.
+[16] W. Wohlkinger and M. Vincze, “Ensemble of shape functions for 3d object classiﬁcation,” in 2011 IEEE International Conference on Robotics and Biomimetics, pp. 2987–2992, 2011.
+[17] Y. Wang, Z. Sun, C. Z. Xu, S. E. Sarma, J. Yang, and H. Kong, “Lidar iris for loop-closure detection,” in 2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 5769–5775, 2020.
+[18] Y. Fan, Y. He, and U. X. Tan, “Seed: A segmentation-based egocentric 3d point cloud descriptor for loop closure detection,” in 2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 5158–5163, 2020.
+
+[19] R. Dube´, D. Dugas, E. Stumm, J. Nieto, R. Siegwart, and C. Cadena, “Segmatch: Segment based place recognition in 3d point clouds,” in 2017 IEEE International Conference on Robotics and Automation (ICRA), pp. 5266–5272, IEEE, 2017.
+[20] R. Dube´, A. Cramariuc, D. Dugas, H. Sommer, M. Dymczyk, J. Nieto, R. Siegwart, and C. Cadena, “Segmap: Segment-based mapping and localization using data-driven descriptors,” The International Journal of Robotics Research, p. 0278364919863090, 2019.
+[21] M. A. Uy and G. H. Lee, “Pointnetvlad: Deep point cloud based retrieval for large-scale place recognition,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 4470– 4479, 2018.
+[22] C. R. Qi, H. Su, K. Mo, and L. J. Guibas, “Pointnet: Deep learning on point sets for 3d classiﬁcation and segmentation,” in Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 652–660, 2017.
+[23] R. Arandjelovic, P. Gronat, A. Torii, T. Pajdla, and J. Sivic, “Netvlad: Cnn architecture for weakly supervised place recognition,” in Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 5297–5307, 2016.
+[24] W. Lu, Y. Zhou, G. Wan, S. Hou, and S. Song, “L3-net: Towards learning based lidar localization for autonomous driving,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 6389–6398, 2019.
+[25] L. Schaupp, M. Bu¨rki, R. Dube´, R. Siegwart, and C. Cadena, “Oreos: Oriented recognition of 3d point clouds in outdoor scenarios,” in 2019 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 3255–3261, 2019.
+[26] J. Du, R. Wang, and D. Cremers, “Dh3d: Deep hierarchical 3d descriptors for robust large-scale 6dof relocalization,” in European Conference on Computer Vision, pp. 744–762, Springer, 2020.
+[27] Z. Liu, S. Zhou, C. Suo, P. Yin, W. Chen, H. Wang, H. Li, and Y.-H. Liu, “Lpd-net: 3d point cloud learning for large-scale place recognition and environment analysis,” in Proceedings of the IEEE/CVF International Conference on Computer Vision, pp. 2831–2840, 2019.
+[28] J. Komorowski, “Minkloc3d: Point cloud based large-scale place recognition,” in Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision, pp. 1790–1799, 2021.
+[29] P. Yin, F. Wang, A. Egorov, J. Hou, J. Zhang, and H. Choset, “Seqspherevlad: Sequence matching enhanced orientation-invariant place recognition,” in 2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 5024–5029, 2020.
+[30] M. Y. Chang, S. Yeon, S. Ryu, and D. Lee, “Spoxelnet: Spherical voxel-based deep place recognition for 3d point clouds of crowded indoor spaces,” in 2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 8564–8570, 2020.
+[31] J. Yang, H. Li, D. Campbell, and Y. Jia, “Go-icp: A globally optimal solution to 3d icp point-set registration,” IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 38, no. 11, pp. 2241–2254, 2016.
+[32] A. Geiger, P. Lenz, C. Stiller, and R. Urtasun, “Vision meets robotics: The kitti dataset,” The International Journal of Robotics Research, vol. 32, no. 11, pp. 1231–1237, 2013.
+[33] J. Behley, M. Garbade, A. Milioto, J. Quenzel, S. Behnke, C. Stachniss, and J. Gall, “Semantickitti: A dataset for semantic scene understanding of lidar sequences,” in Proceedings of the IEEE International Conference on Computer Vision, pp. 9297–9307, 2019.
+[34] A. Milioto, I. Vizzo, J. Behley, and C. Stachniss, “RangeNet++: Fast and Accurate LiDAR Semantic Segmentation,” in IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems (IROS), 2019.
+[35] B. Ferrarini, M. Waheed, S. Waheed, S. Ehsan, M. J. Milford, and K. D. McDonald-Maier, “Exploring performance bounds of visual place recognition using extended precision,” IEEE Robotics and Automation Letters, vol. 5, no. 2, pp. 1688–1695, 2020.
+

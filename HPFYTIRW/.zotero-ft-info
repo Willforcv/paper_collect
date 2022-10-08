@@ -1,0 +1,16 @@
+Title:          A LiDAR/Visual SLAM Backend with Loop Closure Detection and Graph Optimization
+Subject:        LiDAR (light detection and ranging), as an active sensor, is investigated in the simultaneous localization and mapping (SLAM) system. Typically, a LiDAR SLAM system consists of front-end odometry and back-end optimization modules. Loop closure detection and pose graph optimization are the key factors determining the performance of the LiDAR SLAM system. However, the LiDAR works at a single wavelength (905 nm), and few textures or visual features are extracted, which restricts the performance of point clouds matching based loop closure detection and graph optimization. With the aim of improving LiDAR SLAM performance, in this paper, we proposed a LiDAR and visual SLAM backend, which utilizes LiDAR geometry features and visual features to accomplish loop closure detection. Firstly, the bag of word (BoW) model, describing the visual similarities, was constructed to assist in the loop closure detection and, secondly, point clouds re-matching was conducted to verify the loop closure detection and accomplish graph optimization. Experiments with different datasets were carried out for assessing the proposed method, and the results demonstrated that the inclusion of the visual features effectively helped with the loop closure detection and improved LiDAR SLAM performance. In addition, the source code, which is open source, is available for download once you contact the corresponding author.
+Keywords:       LiDAR; graph optimization; loop closure detection
+Author:         Shoubin Chen, Baoding Zhou, Changhui Jiang, Weixing Xue and Qingquan Li
+Creator:        LaTeX with hyperref
+Producer:       pdfTeX-1.40.21
+CreationDate:   Sat Jul 10 19:55:58 2021
+ModDate:        Sat Jul 10 15:15:07 2021
+Tagged:         no
+Form:           none
+Pages:          29
+Encrypted:      no
+Page size:      595.276 x 841.89 pts (A4) (rotated 0 degrees)
+File size:      9993192 bytes
+Optimized:      no
+PDF version:    1.7

@@ -1,0 +1,1311 @@
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+1
+
+Deep Dual-resolution Networks for Real-time and Accurate Semantic Segmentation of Road Scenes
+Yuanduo Hong, Huihui Pan, Weichao Sun, Senior Member, IEEE, Yisong Jia
+
+arXiv:2101.06085v2 [cs.CV] 1 Sep 2021 Accuracy(mIoU%)
+
+Abstract—Semantic segmentation is a key technology for autonomous vehicles to understand the surrounding scenes. The appealing performances of contemporary models usually come at the expense of heavy computations and lengthy inference time, which is intolerable for self-driving. Using light-weight architectures (encoder-decoder or two-pathway) or reasoning on low-resolution images, recent methods realize very fast scene parsing, even running at more than 100 FPS on a single 1080Ti GPU. However, there is still a signiﬁcant gap in performance between these real-time methods and the models based on dilation backbones. To tackle this problem, we proposed a family of efﬁcient backbones specially designed for real-time semantic segmentation. The proposed deep dual-resolution networks (DDRNets) are composed of two deep branches between which multiple bilateral fusions are performed. Additionally, we design a new contextual information extractor named Deep Aggregation Pyramid Pooling Module (DAPPM) to enlarge effective receptive ﬁelds and fuse multi-scale context based on low-resolution feature maps. Our method achieves a new state-of-the-art trade-off between accuracy and speed on both Cityscapes and CamVid dataset. In particular, on a single 2080Ti GPU, DDRNet-23-slim yields 77.4% mIoU at 102 FPS on Cityscapes test set and 74.7% mIoU at 230 FPS on CamVid test set. With widely used test augmentation, our method is superior to most state-of-the-art models and requires much less computation. Codes and trained models are available online.
+Index Terms—Semantic segmentation, real-time, deep convolutional neural networks, autonomous driving
+I. INTRODUCTION
+S EMANTIC segmentation is a fundamental task in which each pixel of the input image should be assigned to the corresponding label [1]–[3]. It plays a vital role in many practical applications, such as medical image segmentation, navigation of autonomous vehicles, and robots [4], [5]. With the rise of deep learning technologies, convolutional neural networks are applied to image segmentation and greatly outperform traditional methods based on handcrafted features. Since the fully convolutional network (FCN) [6] was proposed to handle semantic segmentation problems, a series of novel networks have been proposed. DeepLab [7] eliminates some of downsampling in ResNet to maintain high resolution and utilizes convolutions with large dilations [8] to enlarge receptive ﬁelds. From then on, dilated convolutions based backbones with context extraction modules have become the standard layout widely used in a variety of methods, including DeepLabV2 [9], DeepLabV3 [10], PSPNet [11], and DenseASPP [12].
+Since semantic segmentation is a kind of dense prediction task, neural networks need to output high-resolution feature
+The authors are with Research Institute of Intelligent Control and Systems, Harbin Institute of Technology, Harbin 150001, China (e-mail: huihuipan@hit.edu.cn)
+
+DDRNet-39 80
+DDRNet-23
+
+SFNet(ResNet-18) 78
+
+SFNet(DF2)
+
+MSFNet
+
+SwiftNetRN-18 ens
+
+76
+
+BiSeNetV2-L
+
+SwiftNetRN-18
+
+BiSeNet2
+
+DDRNet-23-Slim
+
+74
+
+SFNet(DF1)
+
+BiSeNetV2
+
+72
+
+GAS
+
+DFANet A
+
+MSFNet*
+
+70
+
+CAS
+
+ERFNet
+
+BiSeNet1 Fast-SCNN
+
+68
+
+0
+
+20
+
+40
+
+60
+
+80
+
+100 120 140 160
+
+Inference Speed(FPS)
+
+Fig. 1. A comparison of speed-accuracy trade-off on Cityscapes test set. The red triangles indicate our methods while blue triangles represent other methods. Green circles represent architecture search methods.
+
+maps of large receptive ﬁelds to produce satisfactory results, which is computationally expensive. This problem is especially critical for scene parsing of autonomous driving which requires enforcement on very large images to cover a wide ﬁeld of view. Therefore, the above methods are very time-consuming in the inference stage and can not be directly deployed on the actual autonomous vehicles. They can not even process an image in one second because of utilizing multi-scale test to improve accuracy.
+With the ever-increasing demand for mobile device deployment, real-time segmentation algorithms [13]–[17] are getting more and more attention. DFANet [18] employs deeply multiscale feature aggregation and lightweight depthwise separable convolutions, achieving 71.3% test mIoU with 100 FPS. Different from the encoder-decoder paradigm, authors in [19] propose a novel bilateral network composed of a spatial path and a context path. Specially, the spatial path utilizes three relatively wide 3×3 convolutional layers to capture spatial details, and the context path is a compact pre-trained backbone for extracting contextual information. Such bilateral methods including [20] achieved higher inference speed than encoderdecoder structures at that time.
+Recently, some competitive real-time methods aiming at semantic segmentation of road scenes are proposed. These methods can be divided into two categories. One utilizes the GPU-efﬁcient backbones, especially ResNet-18 [21]–[23]. The
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+2
+
+other develops complex lightweight encoders trained from scratch, one of which, BiSeNetV2 [24] hits a new peak in terms of real-time performance, achieving 72.6% test mIoU at 156 FPS on Cityscapes. However, except for [23] using extra training data, these recent works do not show the potential for higher quality results. Some of them suffer from a lack of scalability due to deliberately designed architectures and tuned hyper-parameters. Additionally, ResNet-18 is of little advantage given the prosperity of more powerful backbones.
+In this paper, we propose the dual-resolution networks with deep high-resolution representation for real-time semantic segmentation of high-resolution images, especially road-driving images. Our DDRNets start from one trunk and then divide into two parallel deep branches with different resolutions. One deep branch generates relatively high-resolution feature maps and the other extracts rich semantic information through multiple downsampling operations. Multiple bilateral connections are bridged between two branches to achieve efﬁcient information fusion. Besides, we propose a novel module named DAPPM which inputs low-resolution feature maps, extracts multi-scale context information, and merges them in a cascaded way. Before training on semantic segmentation dataset, the dual-resolution networks are trained on ImageNet following common paradigms.
+According to extensive experimental results on three popular benchmarks (i.e., Cityscapes, CamVid, and COCOStuff), DDRNets attain an excellent balance between segmentation accuracy and inference speed. Our method achieves new stateof-the-art accuracy on both Cityscapes and CamVid compared with other real-time algorithms, without attention mechanism and extra bells or whistles. With standard test augmentation, DDRNet is comparable to state-of-the-art models and requires much fewer computing resources. We also report statistically relevant performances and conduct ablation experiments to analyze the effect of architecture improvements and standard training tricks.
+The main contributions are summarized as follows:
+• A family of novel bilateral networks with deep dualresolution branches and multiple bilateral fusions is proposed for real-time semantic segmentation as efﬁcient backbones.
+• A novel module is designed to harvest rich context information by combining feature aggregation with pyramid pooling. When executed on low-resolution feature maps, it leads to little increase in inference time.
+• Our method achieves a new state-of-the-art trade-off between accuracy and speed with the 2080Ti, 77.4% mIoU at 102 FPS on Cityscapes test set and 74.7% mIoU at 230 FPS on CamVid test set. To our best knowledge, we are the ﬁrst to achieve 80.4% mIoU in nearly real time (22 FPS) on Cityscapes only using ﬁne annotations.
+II. RELATED WORK
+In recent years, dilation convolutions based methods have boosted the performance of semantic segmentation under many challenging scenes. And pioneering works explore more
+
+possibilities for lightweight architectures such as the encoderdecoder and the two-pathway. In addition, contextual information is proved to be very crucial for scene parsing tasks. In this section, we group the related works into three categories, i.e., high-performance semantic segmentation, real-time semantic segmentation, and context extraction modules.
+A. High-performance Semantic Segmentation
+The output of the last layer of a common encoder can not be used directly to predict the segmentation masks due to the lack of spatial details. And effective receptive ﬁelds will be too small to learn high-level semantic information if only getting rid of downsampling of the classiﬁcation backbones. An acceptable strategy is to utilize dilated convolutions to set up the long-range connection between pixels while removing the last two downsampling layers [10], [11], as shown in Fig. 2 (a). However, it also poses new challenges to realtime inference due to the exponential growth of high-resolution feature-map dimensions and inadequate optimization of dilated convolution implementation. There is a fact that most state-ofthe-art models are built on dilation backbones and are therefore largely unqualiﬁed for scene parsing of self-driving.
+Some works attempt to explore the substitute of the standard dilation backbones. Authors of DeepLabv3plus [25] propose a simple decoder that fuses upsampled feature maps with low-level feature maps. It alleviates the requirement for high-resolution feature maps generated directly from dilated convolutions. DeepLabv3plus can achieve competitive results though the output stride of the encoder is set to 16. HRNet [26] highlights the deep high-resolution representations and reﬂects higher efﬁciency than dilation backbones. We ﬁnd that the higher computational efﬁciency and inference speed of HRNet owe to its much thinner high-resolution information ﬂows. Taking HRNetV2-W48 as an example, the dimensions of 1/4 resolution and 1/8 resolution features are 48 and 96, respectively, which are much smaller than those of pretrained ResNets [27] with dilation convolutions. Although high-resolution branches of HRNet are much thinner, they can be greatly enhanced by parallel low-resolution branches and repeated multi-scale fusions.
+Our work begins with the deep, thin, high-resolution representations and puts forward more compact architectures. They maintain high-resolution representations and extract high-level contextual information simultaneously through two concise trunks.
+B. Real-time Semantic Segmentation
+Almost all real-time semantic segmentation models employ two basic methods: encoder-decoder methods and twopathway methods. Lightweight encoders which play an significant role in both methods are also discussed.
+1) Encoder-decoder Architecture: Compared to dilated convolution based models, encoder-decoder architectures intuitively cost less computation and inference time. The encoder is usually a deep network with repeated spatial reductions to extract contextual information and the decoder restores the resolution by interpolation or transposed convolution [28] to
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+3
+
+1/2
+
+1/2
+
+1/4
+
+1/4
+
+1/8
+
+1/8
+
+dilation=2
+
+1/16
+
+1/8
+
+dilation=4
+
+1/32
+
+1/8
+
+1/2
+
+1/2
+
+1/2
+
+4×
+
+1/4
+
+1/4
+
+1/4
+
+1/4
+
+1/8
+
+1/8
+
+1/8
+
+1/8
+
+1/16
+
+1/16
+
+1/16
+
+1/32
+
+1/32
+
+1/32
+
+1/2 1/4 1/8
+
+1/16
+
+1/8
+
+1/32
+
+1/8
+
+PPM/ASPP
+8×
+(a)Dilation Backbone
+
+PPM
+(b)Encoder-decoder Backbone
+
+Context Module
+4×
+
+1/8 8×
+
+(c)Two-pathway Backbone
+
+1/64
+
+1/8
+
+DAPPM
+8× 1/8
+8×
+(d)Our Backbone
+
+Fig. 2. A comparison about dilation methods, encoder-decoder methods, two-pathway methods and our deep dual-resolution network.
+
+complete dense predictions, as shown in Fig. 2 (b). Specially, the encoder can be a lightweight backbone pre-trained on ImageNet or an efﬁcient variant trained from scratch like ERFNet [5] and ESPNet [16]. SwiftNet [21] defends the advantage of pre-training encoders on ImageNet and leverages lightweight lateral connections to assist with upsampling. Authors in [29] propose a strategy of multiply spatial fusion and class boundary supervision. FANet [22] achieves a good tradeoff between speed and accuracy with fast attention modules and extra downsampling throughout the network. SFNet [23] delivers a Flow Alignment Module (FAM) to align feature maps of adjacent levels for better fusion.
+2) Two-pathway Architecture: The encoder-decoder architecture reduces computational effort, but due to the loss of some information during repeated downsampling, it can not be completely recovered by unsampling, which impairs the accuracy of semantic segmentation. The two-pathway architecture is proposed in order to alleviate this problem [19], as shown in Fig. 2 (c). In addition to one pathway for extracting semantic information, the other shallow pathway of high resolution provides rich spatial details as a supplement. To further improve the accuracy, BiSeNetV2 [24] uses global average pooling for context embedding and proposes attention based feature fusion. The two pathways in BiSeNetV1&V2 are initially separate while the two branches in Fast-SCNN [20] share the learning to downsample module. CABiNet [30] adopts the overall architecture of Fast-SCNN but uses the MobileNetV3 [31] as the context branch.
+Other than existing two-pathway methods, the deep and thin high-resolution branch of DDRNets enables multiple feature fusions and sufﬁcient ImageNet pre-training while guaranteeing the inference efﬁciency. Our method can be easily scaled to achieve higher accuracy (above 80% mIoU on Cityscapes).
+3) Lightweight Encoders: There are many computationally efﬁcient backbones can be used as the encoder, such as MobileNet [32], ShufﬂeNet [33] and small version of Xception [34]. MobileNet replaces standard convolutions with depthwise separable convolutions to reduce parameters and computation. The strong regularization effect of depthwise separable convolutions is alleviated by inverted residual blocks
+
+in MobileNetV2 [35]. ShufﬂeNet utilizes the compactness of grouped convolutions and proposes a channel shufﬂe operation to facilitate information fusion between different groups. However, these networks contain numerous depthwise separable convolutions which can not be efﬁciently implemented with the existing GPU architecture. Therefore, although the FLOPs of ResNet-18 [27] is about six times of MobileNetV2 1.0×, inference speed of the former is higher than the latter on single 1080Ti GPU [21]. However, the existing lightweight backbones may be suboptimal for semantic segmentation because they are usually overly tuned for image classiﬁcation.
+C. Context Extraction Modules
+Another key to semantic segmentation is how to capture richer contextual information. Atrous Spatial Pyramid Pooling (ASPP) [9] consists of parallel atrous convolutional layers with different rates which can attend to multi-scale contextual information. Pyramid Pooling Module (PPM) [11] in PSPNet is more computationally efﬁcient than ASPP by implementing pyramid pooling ahead of convolutional layers. Unlike the local nature of convolutional kernels, self-attention mechanism is good at capturing global dependencies. In this way, Dual Attention Network (DANet) [36] takes advantage of both position attention and channel attention to further improve feature representation. Object Context Network (OCNet) [37] utilizes self-attention mechanism to explore object context which is deﬁned as a set of pixels belonging to the same object category. Authors of CCNet [38] raise criss-cross attention to improve the efﬁciency of memory usage and computation. However, these context extraction modules are designed and performed for high-resolution feature maps, too time consuming for lightweight models. Taking the low-resolution feature maps as input, we strengthen the PPM module with more scales and deep feature aggregation. When appended to the end of the low-resolution branch, the proposed module outperforms the PPM and Base-OC module in OCNet.
+III. METHOD
+In this section, the whole pipeline is described, which consists of two main components: the Deep Dual-resolution
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+4
+
+TABLE I THE ARCHITECTURES OF DDRNET-23-SLIM AND DDRNET-39 FOR IMAGENET. ‘CONV4×r’ DENOTES THAT CONV4 IS REPEATED r TIMES. FOR
+DDRNET-23-SLIM, r = 1 AND FOR DDRNET-39, r = 2.
+
+stage conv1
+conv2
+
+output 112 × 112
+56 × 56
+
+conv3
+
+28 × 28
+
+conv4×r 14 × 14, 28 × 28
+
+conv5 1
+
+7 × 7, 28 × 28
+
+conv5 2
+
+7×7 1×1
+
+DDRNet-23-slim
+
+3 × 3, 32, stride 2
+
+3 × 3, 32, stride 2
+
+3 × 3, 32 ×2
+3 × 3, 32
+
+3 × 3, 64 ×2
+3 × 3, 64
+
+3 × 3, 128 ×2
+3 × 3, 128
+
+3 × 3, 64 ×2
+3 × 3, 64
+
+Bilateral fusion
+
+3 × 3, 256 ×2
+3 × 3, 256
+
+3 × 3, 64 ×2
+3 × 3, 64
+
+Bilateral fusion
+
+1 × 1, 256
+
+1 × 1, 64 
+
+3 × 3, 256 × 1
+
+
+
+
+
+3 × 3, 64  × 1
+
+
+
+
+
+1 × 1, 512
+
+1 × 1, 128
+
+High-to-low fusion
+
+1 × 1, 1024
+
+7 × 7 global average pool
+
+1000-d fc, softmax
+
+DDRNet-39
+
+3 × 3, 64, stride 2
+
+3 × 3, 64, stride 2
+
+3 × 3, 64 ×3
+3 × 3, 64
+
+3 × 3, 128 ×4
+3 × 3, 128
+
+3 × 3, 256 ×3
+3 × 3, 256
+
+3 × 3, 128 ×3
+3 × 3, 128
+
+Bilateral fusion
+
+3 × 3, 512 ×3
+3 × 3, 512
+
+3 × 3, 128 ×3
+3 × 3, 128
+
+Bilateral fusion
+
+1 × 1, 512 
+
+1 × 1, 128
+
+3 × 3, 512  × 1
+
+
+
+
+
+3 × 3, 128 × 1
+
+
+
+
+
+1 × 1, 1024
+
+1 × 1, 256
+
+High-to-low fusion
+
+1 × 1, 2048
+
+7 × 7 global average pool
+
+1000-d fc, softmax
+
+Network and the Deep Aggregation Pyramid Pooling Module.
+A. Deep Dual-resolution Network
+For convenience, we can add an additional high-resolution branch to the widely used classiﬁcation backbone such as ResNets. To achieve a trade-off between resolution and inference speed, we let the high-resolution branch create feature maps whose resolution is 1/8 of the input image resolution. Therefore, the high-resolution branch is appended to the end of the conv3 stage. Note that the high-resolution branch does not contain any downsampling operations and has a one-toone correspondence with the low-resolution branch to form deep high-resolution representations. Then multiple bilateral feature fusions can be performed at different stages to fully fuse the spatial information and semantic information.
+The detailed architectures of DDRNet-23-slim and DDRNet-39 are shown in Table I. We modify the input stem of the original ResNet, replacing one 7×7 convolutional layer with two sequential 3×3 convolutional layers. Residual basic blocks are utilized to construct the trunk and the subsequent two branches. To expand the output dimension, one bottleneck block is added at the end of each branch. The bilateral fusion includes fusing the high-resolution branch into the low-resolution branch (high-to-low fusion) and fusing the low-resolution into the high-resolution branch (low-to-high fusion). For high-to-low fusion, high-resolution feature maps are downsampled by a sequence of 3×3 convolutions with a stride of 2 prior to pointwise summation. For low-to-high resolution, low-resolution feature maps are ﬁrst compressed by a 1×1 convolution and then upsampled with bilinear interpolation. Fig. 3 shows how bilateral fusion is implemented. The i-th high-resolution feature maps XHi and low-resolution feature maps XLi can be written as:
+XHi = R(FH (XH(i−1)) + TL−H (FL(XL(i−1)))) (1) XLi = R(FL(XL(i−1)) + TH−L(FH (XH(i−1))))
+
+where FH and FL correspond to the sequence of residual basic blocks with high resolution and low resolution, TL−H and TH−L refer to the low-to-high and high-to-low transformer, R denotes the ReLU function.
+We totally construct four dual-resolution networks of different depths and widths. DDRNet-23 is twice as wide as DDRNet-23-slim and DDRNet-39 1.5× is also a wider version of DDRNet-39.
+
+High-resolution branch Low-resolution branch
+
+3×3，256 BN ReLU
+3×3，256 BN
+
+3×3，128 BN ReLU
+3×3，128 BN
+
++
+
++
+
+Bilateral fusion
+
+1×1，128 BN
+
+3×3，256 Stride=2
+BN
+
++ ReLU
+
+2×UP + ReLU
+
+Fig. 3. The details of bilateral fusion in DDRNet. Point-wise summation is implemented before ReLU.
+
+B. Deep Aggregation Pyramid Pooling Module
+Here, we propose a novel module to further extract contextual information from low-resolution feature maps. Fig. 5
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015 Seg. Head
+
+RB
+
+RB
+
+RB
+
+RB
+
+1/4
+
+1/8
+
+1/8
+
+1/8
+
+RBB 1/8
+
+5
+
+×8up
+
+Loss ×8up
+
+sum
+
+Seg. Head
+
+×8up
+
+RB 1/16
+
+RB 1/32
+
+RBB 1/64
+
+D APP M
+
+Fig. 4. The overview of DDRNets on semantic segmentation. “RB” denotes sequential residual basic blocks. “RBB” denotes the single residual bottleneck block. “DAPPM” denotes the Deep Aggregation Pyramid Pooling Module. “Seg. Head” denotes the segmentation head. Black solid lines denote information paths with data processing (including upsampling and downsampling) and black dashed lines denote information paths without data processing. “sum” denotes the pointwise summation. Dashed boxes denote the components which are discarded in the inference stage.
+
+x
+
+kernel=5 stride=2
+
+kernel=9 stride=4
+
+kernel=17 stride=8
+
+kernel=H×W
+
+1×1,conv
+
+1×1,conv upsample
+
+1×1,conv upsample
+
+1×1,conv upsample
+
+1×1,conv upsample
+
+3×3,conv
+
+3×3,conv
+
+1×1,conv
+
+3×3,conv
+
+3×3,conv
+
+y1
+
+y2
+
+y3
+
+y4
+
+y5
+
+concatenate
+
+1×1,conv
++
+
+Fig. 5. The detailed architecture of Deep Aggregation Pyramid Pooling Module. The number of multi-scale branches can be adjusted according to input resolution.
+
+ﬁrst upsample the feature maps and then uses more 3×3
+
+convolutions to fuse contextual information of different scales
+
+in a hierarchial-residual way. Considering an input x, each
+
+scale yi can be written as:
+
+C1×1(x), 
+
+i = 1;
+
+yi = C3×3(U (C1×1(P2i+1,2i−1 (x))) + yi−1), 1 < i < n;
+
+C3×3(U (C1×1(Pglobal(x))) + yi−1),
+
+i = n. (2)
+
+where C1×1 is 1×1 convolution, C3×3 is 3×3 convolution, U denotes upsampling operation, Pj,k denotes the pool layer of which kernel size is j and stride is k, Pglobal denotes the global average pooling. In the end, all feature maps are concatenated
+
+and compressed using a 1×1 convolution. Besides, a 1×1
+
+projection shortcut is added for easy optimization. Similar
+
+to SPP in SwiftNet [21], DAPPM is implemented with the
+
+sequence BN-ReLU-Conv.
+
+Inside a DAPPM, contexts extracted by larger pooling
+
+kernels are integrated with deeper information ﬂow, and multi-
+
+scale nature is formed by integrating different depths with
+
+different sizes of pooling kernels. Table II shows that DAPPM
+
+is able to provide much richer context than PPM. Although
+
+DAPPM contains more convolution layers and more complex
+
+fusion strategy, it hardly affects the inference speed because
+
+the input resolution is only 1/64 of the image resolution. For
+
+example, with a 1024×1024 image, the maximum resolution
+
+of feature maps is 16×16.
+
+shows the interior structure of the DAPPM. Taking feature maps of 1/64 image resolution as input, large pooling kernels with exponential strides are performed to generate feature maps of 1/128, 1/256, 1/512 image resolution. Input feature maps and image-level information generated by global average pooling are also utilized. We argue that it is inadequate to blend all the multi-scale contextual information by a single 3×3 or 1×1 convolution. Inspired by Res2Net [39], we
+
+C. Overall Architecture for Semantic Segmentation
+An overview of our method is depicted in Fig. 4. Some changes are made to the dual-resolution network to accommodate the semantic segmentation task. First, the stride of 3×3 convolution in the RBB of the low-resolution branch is set to 2 to further downsample. Then, a DAPPM is added to the output of the low-resolution branch, which extracts rich contextual information from the high-level feature maps of 1/64 image
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+6
+
+TABLE II CONSIDERING AN INPUT IMAGE OF 1024×1024, THE GENERATED
+CONTEXT SIZES OF PPM AND DAPPM ARE LISTED
+
+Output scale
+
+PPM [16, 6, 3, 2, 1]
+
+DAPPM
+[16] [16, 8] [16, 8, 4] [16, 8, 4, 2] [16, 8, 4, 2, 1]
+
+TABLE III TOP-1 ERROR RATES, PARAMETER SIZE AND GFLOPS OF FOUR
+SCALED-UP DDRNETS
+
+Model DDRNet-23-slim DDRNet-23 DDRNet-39 DDRNet-39 1.5×
+
+top-1 err. 29.8 24.1 22.7 21.6
+
+Params. 7.57M 28.22M 40.13M 76.86M
+
+GFLOPs 0.98G 3.88G 6.95G 14.85G
+
+resolution. Besides, the last high-to-low fusion is replaced by low-to-high fusion implemented by bilinear interpolation and summation fusion. At last, we devise a simple segmentation head consisting of a 3×3 convolutional layer followed by a 1×1 convolutional layer. The computational load of the segmentation head can be adjusted by changing the output dimension of the 3×3 convolutional layer. We set it to 64 for DDRNet-23-slim, 128 for DDRNet-23, and 256 for DDRNet39. Note that except for the segmentation head and the DAPPM module, all the modules have been pre-trained on ImageNet.
+
+CamVid [41] consists of 701 densely annotated frames and the resolution of each frame is 960×720. It comprises 367 images for training, 101 images for validation, and 233 images for testing. We merge the train set and validation set for training and evaluate our models on the test set using 11 classes following previous works [18], [19], [21].
+COCOStuff [42] provides 10K complex images with dense annotations of 182 categories, including 91 thing and 91 stuff classes. Note that 11 of the thing classes do not have any segmentation annotations. We follow the split in [42] (9K for training and 1K for testing) for a fair comparison.
+
+D. Deep Supervision
+
+Extra supervision during the training stage can ease the
+
+optimization of deep convolutional neural networks (DCNNs).
+
+In PSPNet, an auxiliary loss is added to supervise the output
+
+of res4 22 block of ResNet-101 and the corresponding weight
+
+is set to 0.4 according to experimental results [11]. BiSeNetV2
+
+[24] proposes a booster training strategy in which extra
+
+segmentation heads are added at the end of each stage of
+
+the semantic branch. However, it needs numerous experiments
+
+to ﬁnd the optimal weights to balance each loss, and leads
+
+to a non-negligible increase in training memory. To acquire
+
+better results, SFNet [23] utilizes a similar strategy named
+
+Cascaded Deeply Supervised Learning. In this paper, we only
+
+adopt simple extra supervision for a fair comparison with most
+
+of the methods. We add the auxiliary loss as shown in Fig. 4
+
+and set the weight to 0.4 following the PSPNet. The auxiliary
+
+segmentation head is discarded during the testing stage. The
+
+ﬁnal loss which is the weighted sum of cross-entropy loss can
+
+be expressed as:
+
+Lf = Ln + αLa
+
+(3)
+
+where Lf , Ln, La represents the ﬁnal loss, normal loss, auxiliary loss respectively and α denotes the weight of auxiliary loss, which is 0.4 in this paper.
+
+IV. EXPERIMENTS
+A. Datasets
+Cityscapes [40] is one of the well-known datasets focusing on urban street scene parsing. It contains 2975 ﬁnely annotated images for training, 500 images for validation, and 1525 images for testing. We do not use extra 20000 coarsely labeled images during training. There is a total of 19 classes available for the semantic segmentation task. The resolution of images is 2048×1024, which is challenging for real-time semantic segmentation.
+
+B. Train Setting
+Before ﬁnetuning on semantic segmentation tasks, the dualresolution networks are trained on ImageNet [43] following the same data augmentation strategy as previous works [27], [44]. All the models are trained with an input resolution of 224×224, a batch size of 256, and 100 epochs on four 2080Ti GPUs. The initial learning rate is set to 0.1 and is reduced by 10 times at epoch 30, 60, and 90. We train all the networks using SGD with a weight decay of 0.0001 and a Nesterov momentum of 0.9. Top-1 errors on ImageNet validation set are shown in Table III. Although the efﬁciency of DDRNet is not superior to many advanced lightweight backbones which are elaborately designed on ImageNet, it still achieves start-of-theart results on semantic segmentation benchmarks considering a speed trade-off. The training settings of Cityscapes, CamVid, and COCOStuff are introduced as follows.
+1) Cityscapes: Following [49], we use the SGD optimizer with the initial learning rate of 0.01, the momentum of 0.9, and the weight decay of 0.0005. We adopt the ploy learning policy with the power of 0.9 to drop the learning rate and implement the data augmented method including random cropping images, random scaling in the range of 0.5 to 2.0, and random horizontal ﬂipping. Images are randomly cropped into 1024×1024 for training following [18], [29], [23]. All the models are trained with 484 epochs (about 120K iterations), a batch size of 12, and syncBN on four 2080Ti GPUs. For the models evaluated on the test server, we feed images from train and val set simultaneously during training. For a fair comparison with [24] and [23], online hard example mining (OHEM) [50] is also used.
+2) CamVid: We set the initial learning rate to 0.001 and train all the models for 968 epochs. Images are randomly cropped into 960×720 for training following [18]. All the models are trained on a single GPU and other training de-
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+7
+
+TABLE IV ACCURACY AND SPEED COMPARISON ON CITYSCAPES. WE REPORT RESULTS ON BOTH VAL SET AND TEST SET. SINCE INFERENCE SPEED OF DIFFERENT MODELS IS MEASURED UNDER DIFFERENT CONDITIONS, THE CORRESPONDING GPU MODELS AND INPUT RESOLUTIONS ARE REPORTED. OUR GFLOPS CALCULATION ADOPTS 2048×1024 IMAGE AS INPUT. THE CORRESPONDING SPEED IS MEASURED USING TENSORRT ACCELERATION IF THE METHOD IS
+MARKED WITH †
+
+Model
+
+MIoU
+
+val
+
+test
+
+SegNet [45] ENet [13] SQ [46] ICNet [15] ESPNet [16] ERFNet [5]
+
+-
+
+57
+
+-
+
+57
+
+-
+
+59.8
+
+-
+
+69.5
+
+-
+
+60.3
+
+70.0
+
+68.0
+
+Fast-SCNN [20] DFANet A [18] DFANet B [18]
+
+68.6
+
+68.0
+
+-
+
+71.3
+
+-
+
+67.1
+
+SwiftNetRN-18 [21]
+
+75.5
+
+75.4
+
+SwiftNetRN-18 ens [21]
+
+-
+
+76.5
+
+BiSeNet1 [19]
+
+69.0
+
+68.4
+
+BiSeNet2 [19]
+
+74.8
+
+74.7
+
+BiSeNetV2† [24]
+
+73.4
+
+72.6
+
+BiSeNetV2-L† [24]
+
+75.8
+
+75.3
+
+CAS [47] GAS [48]
+
+71.6
+
+70.5
+
+72.4
+
+71.8
+
+SFNet(DF1) [23]
+
+-
+
+74.5
+
+SFNet(DF2) [23]
+
+-
+
+77.8
+
+SFNet(ResNet-18) [23]
+
+-
+
+78.9
+
+MSFNet* [29] MSFNet [29]
+
+-
+
+71.3
+
+-
+
+77.1
+
+CABiNet [30]
+
+76.6
+
+75.9
+
+DDRNet-23-Slim DDRNet-23 DDRNet-39
+
+77.8(77.3±0.4) 77.4
+
+79.5(79.1±0.3) 79.4
+
+-
+
+80.4
+
+Speed (FPS)
+16.7 135.4 16.7
+30 113 41.7
+123.5 100 120
+39.9 18.4
+105.8 65.5 156 47.3
+108 108.4
+74 53 18
+117 41
+76.5
+101.6 37.1 22.0
+
+GPU
+TitanX TitanX TitanX TitanX M TitanX TitanX M
+TitanXp TitanX TitanX
+GTX 1080Ti GTX 1080Ti
+GTX 1080Ti GTX 1080Ti GTX 1080Ti GTX 1080Ti
+TitanXp TitanXp
+GTX 1080Ti GTX 1080Ti GTX 1080Ti
+GTX 2080Ti GTX 2080Ti
+GTX 2080Ti
+GTX 2080Ti GTX 2080Ti GTX 2080Ti
+
+Resolution
+640×360 640×360 2048×1024 2048×1024 1024×512 1024×512
+2048×1024 1024×1024 1024×1024
+2048×1024 2048×1024
+1536×768 1536×768 1024×512 1024×512
+1536×768 1537×769
+2048×1024 2048×1024 2048×1024
+1024×512 2048×1024
+2048×1024
+2048×1024 2048×1024 2048×1024
+
+GFLOPs
+286 3.8 270 28.3 27.7
+3.4 2.1
+104.0 218.0
+14.8 55.3 21.1 118.5
+-
+247
+24.2 96.8
+12.0
+36.3 143.1 281.2
+
+Params
+29.5M 0.4M
+26.5M 0.4M 20M
+1.1M 7.8M 4.8M
+11.8M 24.7M
+5.8M 49M
+-
+-
+9.03M 10.53M 12.87M
+-
+2.64M
+5.7M 20.1M 32.3M
+
+tails are identical to those for Cityscapes. When employing Cityscapes pre-train, we ﬁnetune the models for 200 epochs.
+3) COCOStuff: The initial learning rate is 0.001 and the total training epochs are 110. We resize the short side of the images to 640 before data augmentation. The crop size is 640×640, as same as that of BiSeNetV2 [24]. Other training details are identical to those for Cityscapes while the weight decay is 0.0001. In the inference phase, we ﬁx the image resolution to 640×640.
+C. Measure of Inference Speed and Accuracy
+The inference speed is measured on a single GTX 2080Ti GPU by setting the batch size to 1, with CUDA 10.0, CUDNN 7.6, and PyTorch 1.3. Similar to MSFNet and SwiftNet, we exclude batch normalization layers after convolutional layers because they can be integrated into convolutions during inference. We use the protocols established by [51] for a fair comparison (image size: 2048×1024 for Cityscapes, 960×720 for CamVid, and 640×640 for COCOStuff).
+Following ResNet [27], we report the best results, average results, and standard deviations of four trials except for the cityscapes test set of which accuracy is provided by the ofﬁcial server.
+
+D. Speed and Accuracy Comparisons
+1) Cityscapes: As can be observed from Table IV and Fig. 1, our method achieves a new state-of-the-art trade-off between real-time and high accuracy. Specially, DDRNet-23slim (our smallest model) achieves 77.4% mIoU on the test set at 102 FPS. It outperforms DFANet A and MSFNet* by 6.1% mIoU with similar inference speed, and reasons approximately 2.5 times as fast as MSFNet. Besides, it runs 40% faster than the smallest SFNet and achieves a 2.9% mIoU gain on the test set. It is worth noting that our method also towers over those methods based on architecture search for realtime semantic segmentation such as CAS [47] and GAS [48] with similar inference speed. For the wider model, DDRNet23 achieves the overall best accuracy among the published real-time methods in Table IV, attaining 79.4% mIoU at 37 FPS. DDRNet-23 has a performance gain of 0.5% over SFNet (ResNet-18) and runs twice as fast as it.
+We keep going deeper with DDRNets and achieve 80.4% mIoU on the Cityscapes test server at 22 FPS, only using ﬁnely annotated data. If beneﬁtting from pre-training on Mapillary [52] dataset and TensorRT acceleration like [23], our method can establish a skyscraping baseline for real-time semantic segmentation of road scenes. On the Cityscapes val set, DDRNet-23-slim is superior to all published results in Table IV with 36.3 GFLOPs and 5.7M parameters. And DDRNet-
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+8
+
+TABLE V ACCURACY AND SPEED COMPARISON ON CAMVID. MSFNET RUNS AT 1024×768 AND MSFNET* RUNS AT 768×512 WHILE OTHER METHODS RUN AT 960×720. THE CORRESPONDING SPEED IS MEASURED USING
+TENSORRT ACCELERATION IF THE METHOD IS MARKED WITH †
+
+TABLE VI ACCURACY AND SPEED COMPARISON ON COCOSTUFF. THE INPUT RESOLUTION IS 640×640 AND THE RESULT OF PSPNET50 COMES FROM [24]. THE CORRESPONDING SPEED IS MEASURED USING TENSORRT
+ACCELERATION IF THE METHOD IS MARKED WITH †
+
+Model
+
+MIoU Speed (FPS)
+
+w/o Cityscapes pre-training
+
+DFANet A [18]
+
+64.7
+
+120
+
+DFANet B [18]
+
+59.3
+
+160
+
+SwiftNetRN-18 pyr [21]
+
+73.9
+
+-
+
+SwiftNetRN-18 [21]
+
+72.6
+
+-
+
+BiSeNet1 [19]
+
+65.6
+
+175
+
+BiSeNet2 [19]
+
+68.7
+
+116
+
+BiSeNetV2† [24]
+
+72.4
+
+124
+
+BiSeNetV2-L† [24]
+
+73.2
+
+33
+
+CAS [47]
+
+71.2
+
+169
+
+GAS [48]
+
+72.8
+
+153
+
+SFNet(DF2) [23]
+
+70.4
+
+134
+
+SFNet(ResNet-18) [23]
+
+73.8
+
+36
+
+MSFNet* [29]
+
+72.7
+
+160
+
+MSFNet [29]
+
+75.4
+
+91
+
+DDRNet-23-slim DDRNet-23
+
+74.7(74.3±0.3) 230 76.3(76.0±0.3) 94
+
+w/ Cityscapes pre-training
+
+VideoGCRF [53]
+
+75.2
+
+-
+
+CCNet3D [54]
+
+79.1
+
+-
+
+BiSeNetV2† [24]
+
+76.7
+
+124
+
+BiSeNetV2-L† [24]
+
+78.5
+
+33
+
+DDRNet-23-slim DDRNet-23
+
+78.6(78.2±0.3) 230 80.6(80.1±0.4) 94
+
+GPU
+TitanX TitanX GTX 1080Ti GTX 1080Ti GTX 1080Ti GTX 1080Ti GTX 1080Ti GTX 1080Ti TitanXp TitanXp GTX 1080Ti GTX 1080Ti GTX 2080Ti GTX 2080Ti
+GTX 2080Ti GTX 2080Ti
+GTX 1080Ti GTX 1080Ti
+GTX 2080Ti GTX 2080Ti
+
+23 achieves a new overall best result of 79.5% mIoU. Fig. 6 shows the visualized results of DDRNet-23-slim and DDRNet23 under different scenes.
+2) CamVid: As shown in Table V, DDRNet-23-slim achieves 74.7% mIoU on the CamVid test set at 230 FPS without Cityscapes pre-training. It obtains the second-highest accuracy and runs faster than all the other methods. In particular, the performance of DDRNet-23 is superior to MSFNet, the previous state-of-the-art method. DDRNet-23 also has a big performance gain over BiSeNetV2-L and SFNet (ResNet18) and runs about two times faster than them. Given that the training pixels of CamVid are much less than that of Cityscapes, we believe that the outstanding performances of DDRNets partly attribute to adequate ImageNet pre-training. In addition, our Cityscapes pre-trained models achieve new state-of-the-art accuracy with the real-time speed. Specially, Cityscapes pre-trained DDRNet-23 realizes 80.6% mIoU with 94 FPS, stronger and much faster than BiSeNetV2-L. The corresponding visualized results are shown in Fig. 7.
+3) COCOStuff: We also validate our method on COCOStuff which is a more challenging dataset for real-time semantic segmentation due to the plentiful categories. The stride of RBB in the low-resolution branch is set to 1, for the image resolution is smaller than the other two datasets. Time to reshape images and predicted masks is not counted. Table VI demonstrates that our method outperforms BiSeNetV2 by a substantial degree under very challenging scenarios. Our DDRNet-23 achieves a similar accuracy with PSPNet50 while running 20 times as fast as it.
+
+Model
+PSPNet50 [11]
+ICNet [15]
+BiSeNetV2† [24] BiSeNetV2-L† [24]
+DDRNet-23 DDRNet-39
+
+MIoU
+32.6
+29.1
+25.2 28.7
+32.1(31.8±0.2) 34.8(34.6±0.1)
+
+PixAcc Speed (FPS)
+
+-
+
+6.6
+
+-
+
+35.7
+
+60.5
+
+87.9
+
+63.5
+
+42.5
+
+64.7(64.7±0.1) 129.2 66.6(66.7±0.2) 83.8
+
+TABLE VII STATE-OF-THE-ART MODELS ON CITYSCAPES TEST SET. OS DENOTES THE
+FINAL OUTPUT STRIDE. ALL THE METHODS TRAIN MODELS ON BOTH TRAIN AND VAL SET EXCEPT PSPNET MARKED WITH †ONLY USING TRAIN SET. GFLOPS CALCULATION ADOPTS 1024×1024 IMAGE AS INPUT AND MOST OF RESULTS ABOUT GFLOPS AND PARAMS CAN BE FOUND IN [23]
+
+Model
+SAC [55] DepthSeg [56] PSPNet† [11] ResNet38 [57] BiSeNet [19] DFN [58] PSANet [59] DenseASPP [12] CCNet [38] DANet [36] OCNet [37] OCRNet [60] HRNetV2-W48 [49] SFNet [23]
+DDRNet-39 DDRNet-39 1.5×
+
+OS
+
+mIoU
+
+GFLOPs Params.
+
+8
+
+78.1
+
+-
+
+-
+
+8
+
+78.2
+
+-
+
+-
+
+8
+
+78.4
+
+1065.4
+
+65.7M
+
+8
+
+78.4
+
+-
+
+-
+
+8
+
+78.9
+
+219.1
+
+51.0M
+
+8
+
+79.3
+
+1121.0
+
+90.7M
+
+8
+
+80.1
+
+1182.6
+
+85.6M
+
+8
+
+80.6
+
+632.9
+
+35.7M
+
+8
+
+81.4
+
+1153.9
+
+66.5M
+
+8
+
+81.5
+
+1298.8
+
+66.6M
+
+8
+
+81.7
+
+-
+
+-
+
+8
+
+81.8
+
+-
+
+-
+
+4
+
+81.6
+
+348.1
+
+65.9M
+
+4
+
+81.8
+
+417.5
+
+50.3M
+
+8
+
+81.9
+
+8
+
+82.4
+
+140.6 303.0
+
+32.3M 70.2M
+
+E. Comparisons with State-of-the-art Results
+In this part, we further demonstrate the capacity of DDRNet for semantic segmentation by comparing it to state-of-the-art models on the Cityscapes test set. Such methods frequently employ multi-scale and horizontal ﬂip inference to achieve better results regardless of time cost. For a fair comparison with them, we also apply multiple scales including 0.50×, 0.75×, 1×, 1.25×, 1.5×, 1.75×, 2× with left-right ﬂipping during test. As is shown in Table VII, standard test augmentation improves the accuracy of DDRNet-39 from 80.4% to 81.9%. Our DDRNet-39 outperforms numerous powerful models which are integrated with self-attention modules such as CCNet, DANet, and OCNet. It is noteworthy that our method only requires 11% computation of DANet. DDRNet-39 also gets ahead of SFNet (based on ResNet-101 backbone) which is a state-of-the-art method for real-time semantic segmentation, only requiring 34% computation of it. DDRNet-39 1.5× of which size is closer to other models in Table VII achieves a very competitive performance (82.4% mIoU).
+F. Comparisons with HRNet
+The major difference between DDRNet and HRNet is the number of parallel branches. Besides, we append the
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+9
+
+Fig. 6. Visualized segmentation results on Cityscapes val set. The four columns left-to-right refer to the input image, the ground truth, the output of DDRNet23-slim, and the output of DDRNet-23. The ﬁrst four rows show the performance of two models while the last two rows represent some segmentation failures.
+
+TABLE VIII COMPARATIVE EXPERIMENTS BETWEEN DDRNET AND HRNET IN TERMS
+OF MIOU, FPS AND TRAIN MEMORY
+
+Model
+HRNetV2-W18-Small-v1 [49] HRNetV2-W18-Small-v2 [49] DDRNet-23-slim
+
+mIoU
+70.3 76.2 76.9
+
+FPS
+67.2 31.1 101.6
+
+Train mem.
+1989MiB 2745MiB 1629MiB
+
+TABLE IX INFLUENCES OF STANDARD BELLS AND WHISTLES, INCLUDING DEEP
+SUPERVISION (DS), OHEM AND TRAINING AT A CROP SIZE OF 1024×1024 (THE DEFAULT IS 1024×512)
+
+Model
+
+DS
+
+OHEM 1024×1024 mIoU
+
+DDRNet-23-slim
+
+76.1
+
+DDRNet-23-slim
+
+76.1
+
+DDRNet-23-slim
+
+76.9
+
+DDRNet-23-slim
+
+77.8
+
+multi-scale context extraction module to the end of the lowresolution branch. Experimental results in Table VIII demonstrate the improvement of DDRNet over HRNet in both inference time and training memory usage. We get the val results of two small HRNets from the ofﬁcial implementation. Training memory is measured on a single 2080Ti with a batch size of 2 and a crop size of 1024×512, excluding the auxiliary segmentation head.
+G. Ablative Experiments on Cityscapes
+1) Standard Bells and Whistles: We analyze the effect of some basic training tricks which are also adopted by recent advanced method SFNet [23]. As shown in Table IX, the
+
+accuracy is raised from 76.1 to 77.8 with deep supervision, OHEM, and training at a larger crop size.
+2) DAPPM: We compare the DAPPM with the pyramid pooling based methods (PPM), self-attention based modules (Base-OC), and the res2net module. The results in Table X shows that the proposed module improves the performance of scene parsing from 74.1% mIoU to 77.8% mIoU while the inference speed is hardly affected. Compared to the PPM and RES2, DAPPM also achieves 1% mIoU gain while the BaseOC, another state-of-the-art method, gets a relatively poor performance with low-resolution feature maps.
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+10
+
+TABLE XI ABLATION STUDY OF DUAL-RESOLUTION NETWORKS. THE BASELINE IS
+ADAPTED FROM BISENETV2 BY REPLACING THE COMPLICATED SEMANTIC BRANCH WITH OUR LOW-SOLUTION BRANCH. ‘+THINER DETAIL BRANCH’ REPRESENTS CUTTING THE DIMENSION OF THE DETAIL BRANCH IN HALF. ’+CONV3’ REPRESENTS APPENDING THE DETAIL
+BRANCH TO THE END OF CONV3 STAGE. ‘+RESIDUAL’ DENOTES REPLACING THE 3×3 CONVOLUTIONS WITH THE RESIDUAL BASIC BLOCKS. ‘+BOTTLENECK’ DENOTES ADDING A BOTTLENECK BLOCK TO THE END OF EACH BRANCH. ‘+LOW-TO-HIGH FUSION’ OR ‘+BILATERAL FUSION’ DENOTES PERFORMING THE MULTIPLE LOW-TO-HIGH FUSION OR
+BILATERAL FUSION
+
+Model
+Baseline +Thiner detail branch +Conv3 +Residual +Bottleneck +Low-to-high fusion +Bilateral fusion
+
+mIoU
+72.2 70.9 71.4 71.2 73.3 74.0 74.6
+
+Params.
+4.3M 3.8M 4.0M 4.0M 5.2M 5.3M 5.7M
+
+GFLOPs
+70.2 34.0 31.7 31.7 34.4 34.5 36.3
+
+Speed
+60.2 103.7 128.7 125.2 110.2 107.6 101.6
+
+which generates richer features for the DAPPM and the ﬁnal segmentation head. The bilateral fusions further improve the segmentation accuracy at a small time cost. Finally, our dualresolution network takes less computation resources and time than the baseline while achieving better performance.
+
+V. CONCLUSION
+
+Fig. 7. Visualized segmentation results on CamVid test set. The color of ignored labels during testing is set to black. The three columns left-to-right refer to the input image, the ground truth, and the output of DDRNet-23. The ﬁrst four rows show the successful samples while the last two rows represent some segmentation failures.
+
+TABLE X COMPARISON OF DAPPM AND OTHER CONTEXT EXTRACTION MODULES.
+RES2 DENOTES THE RES2NET MODULE AND BASE-OC IS THE OBJECT CONTEXT MODULE PROPOSED IN [37]
+
+PPM
+
+RES2
+
+Base-OC DAPPM
+
+mIoU
+74.1 76.8 76.8 75.6 77.8
+
+Speed
+107.9 104.9 103.6 104.9 101.6
+
+In this paper, we are devoted to the real-time and accurate semantic segmentation of road scenes and present a simple solution for it without using extra bells or whistles. In particular, novel deep dual-resolution networks are proposed as efﬁcient backbones for real-time semantic segmentation. And a new module is designed for extracting multi-scale contextual information from low-resolution feature maps. To our best knowledge, we are the ﬁrst to introduce deep highresolution representation into real-time semantic segmentation and our simple strategy outperforms all previous real-time models on three popular benchmarks. DDRNets mainly consist of residual basic blocks and bottleneck blocks, providing a wide range of speed and accuracy trade-off by scaling model width and depth. Due to the simplicity and efﬁciency of our method, it can be seen as a strong baseline for unifying realtime and high-accuracy semantic segmentation. Further studies will focus on improving the baseline and transferring the backbones to other downstream tasks.
+REFERENCES
+
+3) Dual-resolution Networks: For faster experiments, we train all the bilateral networks from scratch with a initial learning rate of 0.05, a crop size of 1024×512, 600 epochs in total, and without using OHEM. As shown in Table XI, using thinner detail branch results in 1.3% accuracy decrease and running much faster than the baseline. Appending the detail branch to the middle layer of the network contributes to the deep high-resolution representation and also improves the inference speed because it avoids computing with higher resolution. The bottleneck expands the feature dimension,
+
+[1] Z. Liu, X. Li, P. Luo, C. C. Loy, and X. Tang, “Deep learning markov random ﬁeld for semantic segmentation,” IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 40, no. 8, pp. 1814–1828, 2018.
+[2] L. Jing, Y. Chen, and Y. Tian, “Coarse-to-ﬁne semantic segmentation from image-level labels,” IEEE Transactions on Image Processing, vol. 29, pp. 225–236, 2020.
+[3] X. Ren, S. Ahmad, L. Zhang, L. Xiang, D. Nie, F. Yang, Q. Wang, and D. Shen, “Task decomposition and synchronization for semantic biomedical image segmentation,” IEEE Transactions on Image Processing, vol. 29, pp. 7497–7510, 2020.
+[4] M. Saha and C. Chakraborty, “Her2net: A deep framework for semantic segmentation and classiﬁcation of cell membranes and nuclei in breast cancer evaluation,” IEEE Transactions on Image Processing, vol. 27, no. 5, pp. 2189–2200, 2018.
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+11
+
+[5] E. Romera, J. M. Alvarez, L. M. Bergasa, and R. Arroyo, “Erfnet: Efﬁcient residual factorized convnet for real-time semantic segmentation,” IEEE Transactions on Intelligent Transportation Systems, vol. 19, no. 1, pp. 263–272, 2017.
+[6] J. Long, E. Shelhamer, and T. Darrell, “Fully convolutional networks for semantic segmentation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 3431–3440, 2015.
+[7] L.-C. Chen, G. Papandreou, I. Kokkinos, K. Murphy, and A. L. Yuille, “Semantic image segmentation with deep convolutional nets and fully connected crfs,” arXiv preprint arXiv:1412.7062, 2014.
+[8] S. Mallat, A wavelet tour of signal processing. Elsevier, 1999.
+[9] L.-C. Chen, G. Papandreou, I. Kokkinos, K. Murphy, and A. L. Yuille, “Deeplab: Semantic image segmentation with deep convolutional nets, atrous convolution, and fully connected crfs,” IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 40, no. 4, pp. 834–848, 2017.
+[10] L.-C. Chen, G. Papandreou, F. Schroff, and H. Adam, “Rethinking atrous convolution for semantic image segmentation,” arXiv preprint arXiv:1706.05587, 2017.
+[11] H. Zhao, J. Shi, X. Qi, X. Wang, and J. Jia, “Pyramid scene parsing network,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 2881–2890, 2017.
+[12] M. Yang, K. Yu, C. Zhang, Z. Li, and K. Yang, “Denseaspp for semantic segmentation in street scenes,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 3684–3692, 2018.
+[13] A. Paszke, A. Chaurasia, S. Kim, and E. Culurciello, “Enet: A deep neural network architecture for real-time semantic segmentation,” arXiv preprint arXiv:1606.02147, 2016.
+[14] Z. Yang, H. Yu, M. Feng, W. Sun, X. Lin, M. Sun, Z. H. Mao, and A. Mian, “Small object augmentation of urban scenes for realtime semantic segmentation,” IEEE Transactions on Image Processing, vol. 29, pp. 5175–5190, 2020.
+[15] H. Zhao, X. Qi, X. Shen, J. Shi, and J. Jia, “Icnet for real-time semantic segmentation on high-resolution images,” in Proceedings of the European Conference on Computer Vision, pp. 405–420, 2018.
+[16] S. Mehta, M. Rastegari, A. Caspi, L. Shapiro, and H. Hajishirzi, “Espnet: Efﬁcient spatial pyramid of dilated convolutions for semantic segmentation,” in Proceedings of the European Conference on Computer Vision, pp. 552–568, 2018.
+[17] B. Jiang, W. Tu, C. Yang, and J. Yuan, “Context-integrated and featurereﬁned network for lightweight object parsing,” IEEE Transactions on Image Processing, vol. 29, pp. 5079–5093, 2020.
+[18] H. Li, P. Xiong, H. Fan, and J. Sun, “Dfanet: Deep feature aggregation for real-time semantic segmentation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 9522– 9531, 2019.
+[19] C. Yu, J. Wang, C. Peng, C. Gao, G. Yu, and N. Sang, “Bisenet: Bilateral segmentation network for real-time semantic segmentation,” in Proceedings of the European Conference on Computer Vision, pp. 325– 341, 2018.
+[20] R. P. Poudel, S. Liwicki, and R. Cipolla, “Fast-scnn: Fast semantic segmentation network,” arXiv preprint arXiv:1902.04502, 2019.
+[21] M. Orsic, I. Kreso, P. Bevandic, and S. Segvic, “In defense of pre-trained imagenet architectures for real-time semantic segmentation of roaddriving images,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 12607–12616, 2019.
+[22] P. Hu, F. Perazzi, F. C. Heilbron, O. Wang, Z. Lin, K. Saenko, and S. Sclaroff, “Real-time semantic segmentation with fast attention,” arXiv preprint arXiv:2007.03815, 2020.
+[23] X. Li, A. You, Z. Zhu, H. Zhao, M. Yang, K. Yang, and Y. Tong, “Semantic ﬂow for fast and accurate scene parsing,” arXiv preprint arXiv:2002.10120, 2020.
+[24] C. Yu, C. Gao, J. Wang, G. Yu, C. Shen, and N. Sang, “Bisenet v2: Bilateral network with guided aggregation for real-time semantic segmentation,” arXiv preprint arXiv:2004.02147, 2020.
+[25] L.-C. Chen, Y. Zhu, G. Papandreou, F. Schroff, and H. Adam, “Encoderdecoder with atrous separable convolution for semantic image segmentation,” in Proceedings of the European Conference on Computer Vision, pp. 801–818, 2018.
+[26] K. Sun, Y. Zhao, B. Jiang, T. Cheng, B. Xiao, D. Liu, Y. Mu, X. Wang, W. Liu, and J. Wang, “High-resolution representations for labeling pixels and regions,” arXiv preprint arXiv:1904.04514, 2019.
+[27] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image recognition,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 770–778, 2016.
+
+[28] M. D. Zeiler, D. Krishnan, G. W. Taylor, and R. Fergus, “Deconvolutional networks,” in 2010 IEEE Computer Society Conference on Computer Vision and Pattern Recognition, pp. 2528–2535.
+[29] H. Si, Z. Zhang, F. Lv, G. Yu, and F. Lu, “Real-time semantic segmentation via multiply spatial fusion network,” arXiv preprint arXiv:1911.07217, 2019.
+[30] S. Kumaar, Y. Lyu, F. Nex, and M. Y. Yang, “Cabinet: Efﬁcient context aggregation network for low-latency semantic segmentation,” arXiv preprint arXiv:2011.00993, 2020.
+[31] A. Howard, M. Sandler, G. Chu, L.-C. Chen, B. Chen, M. Tan, W. Wang, Y. Zhu, R. Pang, V. Vasudevan, et al., “Searching for mobilenetv3,” in Proceedings of the IEEE International Conference on Computer Vision, pp. 1314–1324, 2019.
+[32] A. G. Howard, M. Zhu, B. Chen, D. Kalenichenko, W. Wang, T. Weyand, M. Andreetto, and H. Adam, “Mobilenets: Efﬁcient convolutional neural networks for mobile vision applications,” arXiv preprint arXiv:1704.04861, 2017.
+[33] X. Zhang, X. Zhou, M. Lin, and J. Sun, “Shufﬂenet: An extremely efﬁcient convolutional neural network for mobile devices,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 6848–6856, 2018.
+[34] F. Chollet, “Xception: Deep learning with depthwise separable convolutions,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 1251–1258, 2017.
+[35] M. Sandler, A. Howard, M. Zhu, A. Zhmoginov, and L.-C. Chen, “Mobilenetv2: Inverted residuals and linear bottlenecks,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 4510–4520, 2018.
+[36] J. Fu, J. Liu, H. Tian, Y. Li, Y. Bao, Z. Fang, and H. Lu, “Dual attention network for scene segmentation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 3146–3154, 2019.
+[37] Y. Yuan and J. Wang, “Ocnet: Object context network for scene parsing,” arXiv preprint arXiv:1809.00916, 2018.
+[38] Z. Huang, X. Wang, L. Huang, C. Huang, Y. Wei, and W. Liu, “Ccnet: Criss-cross attention for semantic segmentation,” in Proceedings of the IEEE International Conference on Computer Vision, pp. 603–612, 2019.
+[39] S. Gao, M.-M. Cheng, K. Zhao, X.-Y. Zhang, M.-H. Yang, and P. H. Torr, “Res2net: A new multi-scale backbone architecture,” IEEE Transactions on Pattern Analysis and Machine Intelligence, 2019.
+[40] M. Cordts, M. Omran, S. Ramos, T. Rehfeld, M. Enzweiler, R. Benenson, U. Franke, S. Roth, and B. Schiele, “The cityscapes dataset for semantic urban scene understanding,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 3213– 3223, 2016.
+[41] G. J. Brostow, J. Fauqueur, and R. Cipolla, “Semantic object classes in video: A high-deﬁnition ground truth database,” Pattern Recognition Letters, vol. 30, no. 2, pp. 88–97, 2009.
+[42] H. Caesar, J. Uijlings, and V. Ferrari, “Coco-stuff: Thing and stuff classes in context,” in Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 1209–1218, 2018.
+[43] O. Russakovsky, J. Deng, H. Su, J. Krause, S. Satheesh, S. Ma, Z. Huang, A. Karpathy, A. Khosla, M. Bernstein, et al., “Imagenet large scale visual recognition challenge,” International Journal of Computer Vision, vol. 115, no. 3, pp. 211–252, 2015.
+[44] S. Xie, R. Girshick, P. Dolla´r, Z. Tu, and K. He, “Aggregated residual transformations for deep neural networks,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 1492– 1500, 2017.
+[45] V. Badrinarayanan, A. Kendall, and R. Cipolla, “Segnet: A deep convolutional encoder-decoder architecture for image segmentation,” IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 39, no. 12, pp. 2481–2495, 2017.
+[46] M. Treml, J. Arjona-Medina, T. Unterthiner, R. Durgesh, F. Friedmann, P. Schuberth, A. Mayr, M. Heusel, M. Hofmarcher, M. Widrich, et al., “Speeding up semantic segmentation for autonomous driving,” in MLITS, NIPS Workshop, vol. 2, 2016.
+[47] Y. Zhang, Z. Qiu, J. Liu, T. Yao, D. Liu, and T. Mei, “Customizable architecture search for semantic segmentation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 11641– 11650, 2019.
+[48] P. Lin, P. Sun, G. Cheng, S. Xie, X. Li, and J. Shi, “Graph-guided architecture search for real-time semantic segmentation,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 4203–4212, 2020.
+[49] J. Wang, K. Sun, T. Cheng, B. Jiang, C. Deng, Y. Zhao, D. Liu, Y. Mu, M. Tan, X. Wang, W. Liu, and B. Xiao, “Deep high-resolution
+
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015
+
+12
+
+representation learning for visual recognition,” IEEE Transactions on Pattern Analysis and Machine Intelligence, pp. 1–1, 2020. [50] A. Shrivastava, A. Gupta, and R. Girshick, “Training region-based object detectors with online hard example mining,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 761–769, 2016. [51] W. Chen, X. Gong, X. Liu, Q. Zhang, Y. Li, and Z. Wang, “Fasterseg: Searching for faster real-time semantic segmentation,” arXiv preprint arXiv:1912.10917, 2019. [52] G. Neuhold, T. Ollmann, S. Rota Bulo, and P. Kontschieder, “The mapillary vistas dataset for semantic understanding of street scenes,” in Proceedings of the IEEE international conference on computer vision, pp. 4990–4999, 2017. [53] S. Chandra, C. Couprie, and I. Kokkinos, “Deep spatio-temporal random ﬁelds for efﬁcient video segmentation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 8915– 8924, 2018. [54] Z. Huang, X. Wang, Y. Wei, L. Huang, H. Shi, W. Liu, and T. S. Huang, “Ccnet: Criss-cross attention for semantic segmentation,” IEEE Transactions on Pattern Analysis and Machine Intelligence, pp. 1–1, 2020. [55] R. Zhang, S. Tang, Y. Zhang, J. Li, and S. Yan, “Scale-adaptive convolutions for scene parsing,” in Proceedings of the IEEE International Conference on Computer Vision, pp. 2031–2039, 2017. [56] S. Kong and C. C. Fowlkes, “Recurrent scene parsing with perspective understanding in the loop,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 956–965, 2018. [57] Z. Wu, C. Shen, and A. Van Den Hengel, “Wider or deeper: Revisiting the resnet model for visual recognition,” Pattern Recognition, vol. 90, pp. 119–133, 2019. [58] C. Yu, J. Wang, C. Peng, C. Gao, G. Yu, and N. Sang, “Learning a discriminative feature network for semantic segmentation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 1857–1866, 2018. [59] H. Zhao, Y. Zhang, S. Liu, J. Shi, C. Change Loy, D. Lin, and J. Jia, “Psanet: Point-wise spatial attention network for scene parsing,” in Proceedings of the European Conference on Computer Vision (ECCV), pp. 267–283, 2018. [60] Y. Yuan, X. Chen, and J. Wang, “Object-contextual representations for semantic segmentation,” arXiv preprint arXiv:1909.11065, 2019.
+

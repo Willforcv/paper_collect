@@ -1,0 +1,341 @@
+See discussions, stats, and author profiles for this publication at: https://www.researchgate.net/publication/344982023
+Intensity Scan Context: Coding Intensity and Geometry Relations for Loop Closure Detection
+Conference Paper · May 2020
+DOI: 10.1109/ICRA40945.2020.9196764
+
+CITATIONS
+55
+3 authors, including:
+Han Wang Nanyang Technological University 16 PUBLICATIONS 127 CITATIONS
+SEE PROFILE
+
+READS
+265
+Chen Wang Carnegie Mellon University 43 PUBLICATIONS 432 CITATIONS
+SEE PROFILE
+
+Some of the authors of this publication are also working on these related projects: UWB-based Localization View project
+
+All content following this page was uploaded by Han Wang on 13 March 2021.
+The user has requested enhancement of the downloaded file.
+
+Intensity Scan Context: Coding Intensity and Geometry Relations for Loop Closure Detection
+Han Wang, Chen Wang, and Lihua Xie
+
+arXiv:2003.05656v1 [cs.RO] 12 Mar 2020
+
+Abstract— Loop closure detection is an essential and challenging problem in simultaneous localization and mapping (SLAM). It is often tackled with light detection and ranging (LiDAR) sensor due to its view-point and illumination invariant properties. Existing works on 3D loop closure detection often leverage the matching of local or global geometrical-only descriptors, but without considering the intensity reading. In this paper we explore the intensity property from LiDAR scan and show that it can be effective for place recognition. Concretely, we propose a novel global descriptor, intensity scan context (ISC), that explores both geometry and intensity characteristics. To improve the efﬁciency for loop closure detection, an efﬁcient two-stage hierarchical re-identiﬁcation process is proposed, including a binary-operation based fast geometric relation retrieval and an intensity structure re-identiﬁcation. Thorough experiments including both local experiment and public datasets test have been conducted to evaluate the performance of the proposed method. Our method achieves higher recall rate and recall precision than existing geometriconly methods.
+I. INTRODUCTION
+Loop closure detection, which is also known as place recognition, refers to the capability of identifying a visited place. In the problem of simultaneous localization and mapping (SLAM), the estimated states and trajectories often come with inevitable drift [1]. By identifying the revisited places, a robot can eliminate the drifting error. Moreover, it can also prevent from multiple registration of identical landmarks so that a globally consistent map can be created. Vision-based place recognition often suffers from light illumination, weather, or viewing angle. Nevertheless, LiDAR is less affected by such environmental changes, hence it has been widely used for place recognition in the recent years.
+Existing works on place recognition often leverage the matching of 3D descriptors, such as fast point feature histogram (FPFH) [2], fast laser interest region transform (FLIRT) [3], and signature of histograms of orientations (SHOT) [4]. These descriptors explore either global or local geometry information such as surface normal or neighbour points distribution, leaving the intensity information unused. A main justiﬁcation is that intensity information is less straightforward than geometry reading [5], since it is affected by not only target surface characteristics (e.g., roughness,
+The work is supported by Delta-NTU Corporate Laboratory for CyberPhysical Systems under the National Research Foundation Corporate Lab @ University Scheme.
+Han Wang and Lihua Xie are with the School of Electrical and Electronic Engineering, Nanyang Technological University, 50 Nanyang Avenue, Singapore 639798. e-mail: {wang.han,elhxie}@ntu.edu.sg
+Chen Wang is with the Robotics Institute, Carnegie Mellon University, Pittsburgh, PA 15213, USA. e-mail: chenwang@dr.com
+
+Fig. 1: Example of loop closure detected from KITTI sequence 02. The scenario is challenging due to reverse visit. Our proposed intensity scan context on the right images shows high similarity identiﬁes loop closure.
+surface reﬂectance), but also acquisition geometry (e.g., distance) and instrument effects (e.g., transmitted energy) [6]. However, the intensity channel reveals the reﬂectance structure of surrounding environment, e.g., retro-reﬂective material such as metal plate usually returns high value and concrete returns low value. This information is often unique for different places. Moreover, some preliminary works have shown that intensity reading can be effective for place recognition [7], [8].
+In this paper, we propose a novel global descriptor, intensity scan context (ISC), that integrates both geometry and intensity characteristics for loop closure detection. We ﬁrst explain that how intensity information can be distinguishable for a place. Then we propose intensity scan context as a global signature for place recognition. To further improve the efﬁciency of our algorithm, a two-stage hierarchical place re-identiﬁcation strategy is proposed, including a binaryoperation based fast geometry retrieval and an intensity structure matching. To evaluate the performance of the proposed intensity scan context, our method is tested under different scenarios including outdoor autonomous driving and indoor warehouse robot navigation. The results show that the proposed approach achieves higher recall rate and recall rate than existing geometric-only loop closure detection methods.
+The main contributions of this paper are as follows:
+• We propose a novel global descriptor for 3D LiDAR scan that integrates both geometry and intensity characteristics.
+• An efﬁcient loop closure detection strategy based on a two-stage hierarchical intensity scan context (ISC) re-
+
+identiﬁcation is proposed. It only costs 1.2 ms per query on average. • A thorough evaluation on the proposed descriptor, including both local experiment and public datasets test, is conducted.
+This paper is organized as follows: Section II reviews the related works on both vision based and LiDAR based approaches for loop closure detection. Section III describes the idea of using ISC for place recognition, followed by the two-stage hierarchical place re-identiﬁcation. Section IV shows experimental results and comparison with existing works, followed by the conclusion in Section V.
+
+(a) Intensity scan reading of a crossroad.
+
+II. RELATED WORK
+According to the perception system, existing works on loop closure detection can be categorised as visionbased methods and LiDAR-based methods. Vision-based approaches are developed for place recognition in the early stage. Those methods often leverage the bag of words model (BoW) that measures the distance of visual words according to a pre-trained visual vocabulary, e.g., FAB-MAP [9] and DBoW2 [10]. They are widely used in visual SLAM such as ORB SLAM [11] and LDSO [12]. However, image stream is not resistant to light illumination or view-point so that visionbased place recognition is not robust in practice. Although some works aiming to solve the problem of environmental changes have been proposed [13], [14], they are still limited to some speciﬁc scenarios.
+In comparison, due to the high robustness to illumination and view-point changes, LiDAR is subsequently introduced for loop closure detection. Existing works on LiDAR-based place recognition strive for an efﬁcient local descriptor or place signature that can accurately and concisely present a place. One of the most popular local descriptors is the fast point feature histogram (FPFH) [2] which explores the local surface normal of each neighbour point. It is effective in estimating afﬁne transform between two point clouds and is used for place recognition in the later work such as [15]. Bosse et al. propose a probabilistic voting approach based on Gasalt3D descriptor [16]. Despite the good performance achieved, the point cloud retrival is inefﬁcient due to the high dimension of the proposed descriptor.
+Re-identiﬁcation on the local descriptor usually requires key-point extraction and massive local geometry calculation. In comparison, matching on global descriptor is more efﬁcient in place recognition. Rizzini introduces a novel descriptor named GLAROT that encodes the relative geometric position of key-point pairs into a histogram [17]. The experimental results show that it achieves satisfactory recall precision and recall rate. However, building key-point relation is still computationally expensive. Kim et al. propose scan context which projects laser scan into global descriptor. The matching of scan context only requires element-wise multiplication so that the query speed is fast. However, the matching precision is not high enough and false positive often occurs during public datasets test.
+
+(b) Camera view of the same place.
+Fig. 2: An example of intensity reading from KITTI dataset. The relationship of intensity information and landmarks are highlighted with red rectangles.
+The global descriptors are more efﬁcient but the performance is not competitive. However, recent works show that the performance can be improved by integrating intensity characteristics. Guo et al. justify that intensity information can be distinctive for places and propose a novel local descriptor called intensity signature of histograms of orientations (ISHOT) that consists of both geometry and intensity information. The place re-identiﬁcation is solved by a probabilistic voting strategy similar to [16]. Despite computationally expensive, the new descriptor outperforms geometrical-only descriptors. This inspires us to propose a more efﬁcient and accurate global descriptor.
+III. METHODOLOGY
+In this section, the proposed method is described in detail. We ﬁrst present the concept of intensity scan and brieﬂy explain that how intensity characteristics can be used for place recognition. Then we present the idea of using intensity scan context as a global 3D descriptor. Furthermore, an efﬁcient two-stage hierarchical intensity scan context based retrieval is introduced, consisting of a fast binary-operation based geometry retrieval and an intensity structure matching.
+A. Intensity Calibration and Pre-processing
+LiDAR perceives the environment by emitting and receiving laser beam. Generally, the distance value is measured by traveling time while the surface reﬂectance can be estimated by returned energy level (i.e., intensity). The intensity reading reveals surrounding surface reﬂectance structure. Existing works on LiDAR have shown that the returned intensity readings vary for different objects [6], e.g., retroreﬂective material such as metal plate usually returns high
+
+Fig. 3: A visual illustration of the proposed intensity scan context. Left ﬁgure: original point cloud is decomposed into subspace based on geometry characteristics. Right ﬁgure: derived intensity scan context by intensity projection on the subspace.
+
+value and concrete returns low value. In Fig. 2, we show an example from KITTI dataset [18] for demonstration. The point cloud and image present the same place and the intensity structure is interpreted in the ﬁrst image. We pick 3 landmarks including car, road sign and building respectively and highlight them with red rectangles in both Fig. 2 (a) and Fig. 2 (b). It is observed that the road sign is highly distinguishable with low energy loss while the building structure (concrete) returns medium intensity. Moreover, the reﬂectance is consistent in object level.
+However, the intensity channel is noisy since it is affected by not only target surface characteristics (e.g., roughness, surface reﬂectance), but also acquisition geometry (e.g., distance) and instrument effects (e.g., transmitted energy) [6]. Hence calibration is necessary in order to reduce the disturbance by other factors. Similar to [19], [8], we calibrate the intensity reading ηr with a mapping function ϕ:
+
+ηcal = ϕ(ηr, d),
+
+(1)
+
+where d is the distance reading. The mapping function ϕ describes the inﬂuence of distance on the received energy and can be collected based on ofﬂine experiments. Besides remapping, the intensity return from 3D LiDAR is an eightbyte integer, e.g., Velodyne VLP-16. It is re-scaled into [0,1] as a ﬂoat number for convenience.
+In the pratical applications, some pre-processing of the LiDAR scan is necessary in order to remove the redundant information. Based on observation, the LiDAR noise increases with distance. Therefore, the LiDAR reading is ﬁrstly ﬁltered by setting a distance threshold Lmax to remove unreliable points. Moreover, the ground points are often not signiﬁcant for place recognition so that they are optimized by the method similar to [20] in advance.
+
+B. Intensity Scan Context
+Extraction of local descriptors is often computationally expensive since we need to identify local geometry characteristics such as local norm for every single key-point. Hence to increase the computational efﬁciency, the intensity information is interpreted as global descriptor in this work. Inspired by scan context [21], [22] and shape context
+
+[23], we introduce intensity scan context that can efﬁciently integrate both geometry and intensity characteristics into a
+
+global signature. Denote the intensity reading η, geometry reading [x, y, z],
+and number of points n, a LiDAR scan is deﬁned as P = {p1, p2, · · · , pn} with each point pk = [xk, yk, zk, ηk] in the local Cartesian coordinate. Each point pk can be converted into polar coordinate, but only in x-y plane, so that
+pk = [ρk, θk, zk, ηk],
+
+ρk = xk2 + yk2,
+
+(2)
+
+θk
+
+=
+
+arctan
+
+yk xk
+
+.
+
+The point cloud is then segmented by equally diving polar coordinate in azimuthal and radial directions into Ns sectors and Nr rings. Each segment is represented by:
+
+Sij
+
+=
+
+{pk
+
+∈
+
+P| i · Lmax Nr
+
+≤
+
+ρk
+
+<
+
+(i +
+
+1) · Lmax , Nr
+
+j · 2π
+
+(j + 1) · 2π
+
+(3)
+
+Ns − π ≤ θk <
+
+Ns
+
+− π},
+
+where i ∈ [|1, Ns|], j ∈ [|1, Nr|] and the symbol [|1, N |] represents {1, 2, · · · , N }. The point cloud is then divided into Ns × Nr subspace. As discussed before, the intensity reading is often consistent for the same object. Since the each subspace is much smaller than whole point cloud, we
+
+can assume that the intensity reading does not vary too much. Hence for each subspace, a coding function κ can be applied to reduce the intensity dimension. It is deﬁned as:
+
+ηij = κ(Sij )
+
+= max ηk.
+
+(4)
+
+pk ∈Sij
+
+Note that if Sij ∈ ∅ (i.e., no scan data), ηij = 0. Up to this point, we can generate the intensity scan context Ω by:
+
+Ω(i, j) = ηij.
+
+(5)
+
+The global signature Ω is a 2D matrix that reveals both geometry and intensity distribution of the environment. We pick a LiDAR scan from KITTI dataset [18] for illustration in Fig. 3. The left ﬁgure is the point cloud from top down
+
+view with the sub point cloud space Sij marked in red color. The right ﬁgure is the coded intensity scan context with each pixel calculated by intensity coding function.
+
+C. Place Re-identiﬁcation
+Place recognition targets to match current place Pn with the previously visited places from the historical database D = {P1, P2, · · · , Pn−1}. As more places visited, the scale of database D inevitably increases so that the computational cost grows accordingly. To reduce the computational cost, in this section we propose a two-stage hierarchical intensity scan context retrieval strategy that makes use of fast binary operation to speed up the process of place re-identiﬁcation.
+1) Fast Geometry Re-identiﬁcation: Most of 3D descriptors are histogram-based such as unique shape context (USC) [4], ISHOT [8], etc. Matching between histograms can be slow in practice since mathematical operation is inevitable, e.g., multiplication of ﬂoat numbers. In comparison, binary operation (or logical operation) achieves much faster speed than those mathematical operation. Inspired by [24], we introduce an efﬁcient binary operation geometry reidentiﬁcation for fast indexing. Given an intensity scan context Ω, its geometry distribution on the local coordinate can be represented as a binary matrix I:
+
+f alse, if Ω(x, y) = 0
+
+I(x, y) =
+
+(6)
+
+true, otherwise
+
+For a query intensity scan context Ωq, a candidate intensity scan context Ωc and their binary transform Iq, Ic, the
+geometry similarity can be derived as:
+
+ϕg(Iq, Ic)
+
+=
+
+XOR(Iq, Ic) |Iq| ,
+
+(7)
+
+where |x| is the total number of elements in x and XOR(x, y) refers to element-wise exclusive OR operation between matrix x and y. Because the column vector in intensity scan context represents azimuthal direction, the rotation of laser scan becomes column shift in intensity scan context [21]. Hence for place recognition, the viewing angle change can be interpreted as column-shifts of Ω. Therefore, to detect the view-point change, the ﬁnal score is calculated by:
+
+Φg (I q ,
+
+Ic)
+
+=
+
+max
+i∈[|1,Ns |]
+
+ϕg (Iiq ,
+
+I c ),
+
+(8)
+
+where Iiq is Iq shifted by ith column. In the meantime, we can identify the best matched Ikq with column-shifts of k that can be used to correct viewing angle change. The
+unmatched pair can be ﬁltered out by setting an empirically
+determined threshold g. In experiments we ﬁnd that binary matching only costs 0.5 ms on a desktop computer that is
+very computationally efﬁcient.
+2) Intensity Structure Matching: The second stage mainly
+identiﬁes the intensity similarity between two intensity scan context Ωq and Ωc by column-wise comparison. Let viq and vic be the ith column of Ωq and Ωc, the score can be found
+
+Fig. 4: Autonomous warehouse robot platform used for our experiment.
+
+by taking cosine distance:
+
+ϕi(Ωq, Ωc)
+
+=
+
+1 Ns
+
+Ns −1
+(
+i=0
+
+viq · vic viq · vic
+
+).
+
+(9)
+
+Similar to geometry matching, we have to correct viewing
+
+angle change. Since the viewing angle change k is already
+
+identiﬁed from and Ωc where
+
+geometry Ωqk is Ωq
+
+re-identiﬁcation, we compare Ωqk shifted by kth column. This also
+
+signiﬁcantly reduces the computational cost because com-
+
+parison of intensity involves mathematical operation rather
+
+than logical operation. The ﬁnal score is calculated as:
+
+Φi(Ωq, Ωc) = ϕi(Ωqk, Ωc).
+
+(10)
+
+The unmatched pair can be also ﬁltered out by setting an empirically determined threshold i.
+
+D. Consistency Veriﬁcation
+As discussed in previous section, global descriptor is a highly simpliﬁed representation of original point cloud. Hence it is inevitable to have some features ignored, which can lead to false positive. Therefore it is necessary to check consistency before closing the loop.
+1) Temporal consistency check: In a SLAM system, it is observed that the occurrence of single loop closure often implies high similarity on the neighbour LiDAR scans since the sensor feedback is continuous in time [25]. We can verify the loop closure by measuring the temporal consistency:
+
+1N P (Pm, Pn) = N (Φg(Im−k, In−k)+Φi(Ωm−k, Ωn−k)),
+k=1
+(11)
+
+(a) Loop not detected with visual place recognition.
+
+(b) Loop identiﬁed with the proposed approach.
+
+Fig. 5: Local experiment result of the proposed algorithm.
+
+where N is the number of frames included for temporal consistency veriﬁcation. Note that in case of reverse visit (viewing angle change detected in geometry re-identiﬁcation), Im−i becomes Im+i accordingly. The loop candidate can be accepted by taking threshold ξ on the ﬁnal temporal consistency score.
+2) Geometrical consistency: The geometrical consistency veriﬁes the raw scan-to-scan similarity. Similar to [8], FPFH features are extracted and matched to get an initial guess of the rigid transform matrix. Starting from this initial estimate, iterative closest point (ICP) [26] is applied to ﬁnd minimal distance error between the query scan and candidate scan.
+
+approach is compared with vision-based approach using a front-mounted camera. In particular, we use DBoW2 [10] which is implemented in ORB SLAM [11]. The result is shown in Fig. 5 with the estimated trajectory plotted in green. For DBoW2, the reverse visit changes the view angle signiﬁcantly so that there is not enough similarity to conclude loop closure. Hence the trajectory collides with shelves according to the ﬁnal result, which is incorrect. In comparison, our proposed method is able to identify the revisited place easily. The estimated trajectory and the mapping are much more reasonable. This is due to the view angle invariant property of our proposed two-stage hierarchical ISC-based retrieval.
+
+IV. EXPERIMENT EVALUATION
+A. Experiment Setup
+In this section we present preliminary results from our proposed method, including both indoor warehouse robot navigation and outdoor autonomous driving experiments. The proposed method is implemented in C++ and is integrated to robot operating system (ROS) on an Intel NUC mini computer. For indoor warehouse navigation, an autonomous guided vehicle (AGV) equipped with Velodyne VLP-16 and Intel Realsense r200 is used for the experiment. As shown in Fig. 4, the robot is developed for warehouse manipulation tasks such as packaging and transportation which require high accuracy on long-term localization. The maximum speed of AGV is 1 m/s. For outdoor autonomous driving, KITTI dataset [18] is used for evaluation. The proposed place recognition approach is used to reduce localization drifts and improve the mapping accuracy. A list of parameters used in the experiment is shown in Table I.
+
+C. Evaluation on Public Dataset
+To further demonstrate the performance of the proposed method, we test the algorithm on the KITTI dataset which is commonly used for place recognition. KITTI dataset is collected from an autonomous car equipped with various perception systems including front-mounted cameras, Velodyne HDL-64E LiDAR, GPS, etc. The recorded scenarios are challenging for loop closure detection due to similar architectures and dynamic environment. The proposed method is tested with multiple recordings such as sequence 00, 02 and 05. Sequence 00 and 05 are commonly used for place recognition since most of loop closure places are forward visited. Sequence 02 contains both forward and reverse visit and is considered as a more challenging scenario.
+Recall rate and precision are collected from each test. Precision is the percentage of successful pairing and recall rate is the reported loop pairs against total loop pairs. Higher
+
+B. Experiment on Autonomous Robot
+The robot is tested in real warehouse environment consisting of operating machines, shelves, human, etc. LiDAR odometer is estimated based on feature points matching via point cloud library (PCL) [27] and the robot trajectory (frontend SLAM) are collected from the fusion of both wheel odometer and LiDAR odometer. To illustrate, we simulate a common task where the robot leaves the docking station to fetch materials and come back in a reverse direction. Our
+
+Parameter
+Lmax Ns Nr
+g
+i
+N ξ
+
+Description
+Maximum radius Number of sectors Number of rings Geometry matching threshold Intensity matching threshold Frames used in temporal consistency check Temporal consistency checking threshold
+
+Value
+50 20 60 0.9 0.92 5 1.8
+
+TABLE I: Parameter List.
+
+（a）
+
+（b）
+
+（c）
+
+Fig. 6: Loop closure detection result. (a) KITTI sequence 00. (b) KITTI sequence 02. (c) KITTI sequence 05.
+
+recall rate can signiﬁcantly reduce drifting error and higher recall precision can prevent wrong registration of points into map. The number of total loop closure is collected based on GPS since the test-ﬁeld is large in scale. The results of our proposed approach can be found in Fig. 6, with the GPS trajectory plotted from light to dark with time going. Each of the loop closure place detected is marked in red.
+The results are also compared with existing works such as [21], [17], [24] that are commonly used in SLAM applications. We also include the state-of-the-art vision-based place recognition methods such as [10] for comparison. The experimental results of [21], [17], [24] are collected from the respective paper due to unavailability of source code and [10] is tested with local experiment. The results are listed in Table II. Compare to vision-based approach, our approach achieves competitive precision and recall rate on both sequence 00 and sequence 05. On more challenging dataset sequence 02, our approach achieves much higher recall rate. This is because in sequence 02 vision based approach fails to identify the reverse visit so that the recall rate drops signiﬁcantly. However, false positive is reported
+
+Dataset sequence 00
+sequence 02 sequence 05
+
+Approaches Kim [21] GLAROT3D [17] Cieslewski [24] Ga´lvez-Lo´pez [10] Proposed Kim [21] Ga´lvez-Lo´pez [10] Proposed Kim [21] Cieslewski [24] GLAROT3D [17] Ga´lvez-Lo´pez [10] Proposed
+
+Precision (%) 100 86 92 100 100 90 100 98 100 93 80 100 100
+
+Recall Rate (%) 87 40 80 92 90.2 73 80.6 91 90 60 80 87.6 91.2
+
+TABLE II: Comparison with existing methods.
+
+for LiDAR based approach such as our method and [21]. The failure case comes from non-residential area where both sides of roads are trees so that the geometry and intensity characteristics are very limited for place recognition. Compared to LiDAR based approach such as [21], [17], [24], we achieve both higher recall precision and recall rate across all three datasets. Moreover, the proposed intensity scan context only costs 1.2 ms/query which is very efﬁcient in practice.
+V. CONCLUSION
+In this paper, we present a robust loop closure detection approach by integrating both geometry and intensity information. Existing works on LiDAR-based loop closure detection mainly leverage the geometric-only descriptor and ignore intensity reading. Inspired by the recent researches on LiDAR intensity, we argue that the intensity information can be effective for place recognition and propose a global 3D descriptor named intensity scan context. To reduce the computational cost, an efﬁcient two-stage hierarchical intensity scan context retrieval is proposed, consisting of a fast binary-operation based geometry indexing and an intensity structure re-identiﬁcation. It costs only 1.2 ms per query on a normal computer in practice. Thorough experiments have been conducted including local run test with autonomous warehouse robot and public dataset test to evaluate our proposed method. The results show that our proposed method achieves competitive recall precision and recall rate compared to the state-of-the-art methods.
+REFERENCES
+[1] A. Angeli, D. Filliat, S. Doncieux, and J.-A. Meyer, “A fast and incremental method for loop-closure detection using bags of visual words,” IEEE Transactions on Robotics, pp. 1027–1037, 2008.
+[2] R. B. Rusu, N. Blodow, and M. Beetz, “Fast point feature histograms (fpfh) for 3d registration,” in 2009 IEEE International Conference on Robotics and Automation, 2009, pp. 3212–3217.
+[3] G. D. Tipaldi and K. O. Arras, “Flirt-interest regions for 2d range data,” in 2010 IEEE International Conference on Robotics and Automation, 2010, pp. 3616–3622.
+[4] F. Tombari, S. Salti, and L. Di Stefano, “Unique shape context for 3d data description,” in Proceedings of the ACM workshop on 3D object retrieval, 2010, pp. 57–62.
+
+[5] C. Wang, J. Yuan, and L. Xie, “Non-iterative slam,” in Advanced Robotics (ICAR), 2017 18th International Conference on. IEEE, 2017, pp. 83–90.
+[6] A. Kashani, M. Olsen, C. Parrish, and N. Wilson, “A review of lidar radiometric processing: From ad hoc intensity correction to rigorous radiometric calibration,” Sensors, vol. 15, no. 11, pp. 28 099–28 128, 2015.
+[7] K. P. Cop, P. V. Borges, and R. Dube´, “Delight: An efﬁcient descriptor for global localisation using lidar intensities,” in 2018 IEEE International Conference on Robotics and Automation (ICRA), 2018, pp. 3653–3660.
+[8] J. Guo, P. V. Borges, C. Park, and A. Gawel, “Local descriptor for robust place recognition using lidar intensity,” IEEE Robotics and Automation Letters, vol. 4, no. 2, pp. 1470–1477, 2019.
+[9] A. Glover, W. Maddern, M. Warren, S. Reid, M. Milford, and G. Wyeth, “Openfabmap: An open source toolbox for appearancebased loop closure detection,” in 2012 IEEE international conference on Robotics and automation (ICRA), 2012, pp. 4730–4735.
+[10] D. Ga´lvez-Lo´pez and J. D. Tardos, “Bags of binary words for fast place recognition in image sequences,” IEEE Transactions on Robotics, vol. 28, no. 5, pp. 1188–1197, 2012.
+[11] R. Mur-Artal and J. D. Tardo´s, “Orb-slam2: An open-source slam system for monocular, stereo, and rgb-d cameras,” IEEE Transactions on Robotics, vol. 33, no. 5, pp. 1255–1262, 2017.
+[12] X. Gao, R. Wang, N. Demmel, and D. Cremers, “Ldso: Direct sparse odometry with loop closure,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2018, pp. 2198– 2204.
+[13] A. Anoosheh, T. Sattler, R. Timofte, M. Pollefeys, and L. Van Gool, “Night-to-day image translation for retrieval-based localization,” in 2019 International Conference on Robotics and Automation (ICRA), 2019, pp. 5958–5964.
+[14] T. Naseer, M. Ruhnke, C. Stachniss, L. Spinello, and W. Burgard, “Robust visual slam across seasons,” in 2015 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2015, pp. 2529– 2535.
+[15] R. Dube´, D. Dugas, E. Stumm, J. Nieto, R. Siegwart, and C. Cadena, “Segmatch: Segment based place recognition in 3d point clouds,” in 2017 IEEE International Conference on Robotics and Automation (ICRA), 2017, pp. 5266–5272.
+
+[16] M. Bosse and R. Zlot, “Place recognition using keypoint voting in large 3d lidar datasets,” in 2013 IEEE International Conference on Robotics and Automation, 2013, pp. 2677–2684.
+[17] D. L. Rizzini, “Place recognition of 3d landmarks based on geometric relations,” in 2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2017, pp. 648–654.
+[18] A. Geiger, P. Lenz, C. Stiller, and R. Urtasun, “Vision meets robotics: The kitti dataset,” The International Journal of Robotics Research, vol. 32, no. 11, pp. 1231–1237, 2013.
+[19] J. Levinson and S. Thrun, “Unsupervised calibration for multi-beam lasers,” in Experimental Robotics. Springer, 2014, pp. 179–193.
+[20] T. Shan and B. Englot, “Lego-loam: Lightweight and groundoptimized lidar odometry and mapping on variable terrain,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2018, pp. 4758–4765.
+[21] G. Kim and A. Kim, “Scan context: Egocentric spatial descriptor for place recognition within 3d point cloud map,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2018, pp. 4802–4809.
+[22] G. Kim, B. Park, and A. Kim, “1-day learning, 1-year localization: Long-term lidar localization using scan context image,” IEEE Robotics and Automation Letters, vol. 4, no. 2, pp. 1948–1955, 2019.
+[23] S. Belongie, J. Malik, and J. Puzicha, “Shape matching and object recognition using shape contexts,” IEEE Transactions on Pattern Analysis & Machine Intelligence, no. 4, pp. 509–522, 2002.
+[24] T. Cieslewski, E. Stumm, A. Gawel, M. Bosse, S. Lynen, and R. Siegwart, “Point cloud descriptors for place recognition using sparse visual information,” in 2016 IEEE International Conference on Robotics and Automation (ICRA), 2016, pp. 4830–4836.
+[25] M. J. Milford and G. F. Wyeth, “Seqslam: Visual route-based navigation for sunny summer days and stormy winter nights,” in 2012 IEEE International Conference on Robotics and Automation. IEEE, 2012, pp. 1643–1649.
+[26] P. J. Besl and N. D. McKay, “Method for registration of 3-d shapes,” in Sensor fusion IV: control paradigms and data structures, vol. 1611. International Society for Optics and Photonics, 1992, pp. 586–606.
+[27] R. B. Rusu and S. Cousins, “3D is here: Point Cloud Library (PCL),” in IEEE International Conference on Robotics and Automation (ICRA), Shanghai, China, May 9-13 2011.
+
+View publication stats
+

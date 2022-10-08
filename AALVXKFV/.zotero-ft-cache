@@ -1,0 +1,277 @@
+Joint Camera Intrinsic and LiDAR-Camera Extrinsic Calibration
+Guohang Yan, Feiyu He, Chunlei Shi, Pengjin Wei, Xinyu Cai and Yikang Li†
+
+arXiv:2202.13708v2 [cs.RO] 13 Jul 2022
+
+Abstract— Sensor-based environmental perception is a crucial step for autonomous driving systems, for which an accurate calibration between multiple sensors plays a critical role. For the calibration of LiDAR and camera, the existing method is generally to calibrate the intrinsic of the camera ﬁrst and then calibrate the extrinsic of the LiDAR and camera. If the camera’s intrinsic is not calibrated correctly in the ﬁrst stage, it isn’t easy to calibrate the LiDAR-camera extrinsic accurately. Due to the complex internal structure of the camera and the lack of an effective quantitative evaluation method for the camera’s intrinsic calibration, in the actual calibration, the accuracy of extrinsic parameter calibration is often reduced due to the tiny error of the camera’s intrinsic parameters. To this end, we propose a novel target-based joint calibration method of the camera intrinsic and LiDAR-camera extrinsic parameters. Firstly, we design a novel calibration board pattern, adding four circular holes around the checkerboard for locating the LiDAR pose. Subsequently, a cost function deﬁned under the reprojection constraints of the checkerboard and circular holes features is designed to solve the camera’s intrinsic parameters, distortion factor, and LiDAR-camera extrinsic parameter. In the end, quantitative and qualitative experiments are conducted in actual and simulated environments, and the result shows the proposed method can achieve accuracy and robust performance. The open-source code is available at https://github.com/OpenCalib/JointCalib.
+I. INTRODUCTION
+Autonomous driving has attracted more and more attention in both industry and academic ﬁelds. A safe and robust driving relies on an accurate sensor-based environmental perception system. However, a single sensor can not guarantee reliability because of the diverse conditions in the real world. To ensure that autonomous driving vehicles can operate appropriately under dynamic circumstances, multimodel complementary sensors cooperation technologies have appeared, which can provide adequate environmental information, thus contributing to a more reliable data fusion. Among the numerous types of sensor data fusion methods, the combination of LiDAR and camera is one of the most commonly used pairs of sensors for driving environment perception. LiDARs can provide 3D point cloud data, which include accurate depth and reﬂection intensity information, while cameras capture the rich semantic information of the scene. The combination of camera and LiDAR provides the feasibility to overcome the ﬂaws of each sensor. The main challenge in fusing these two heterogeneous sensors is to ﬁnd the precise camera’s intrinsic parameters and the rigid
+
+body transformation between sensor coordinate systems by performing extrinsic calibration [1]. Researchers have made a lot of effort to improve the accuracy and efﬁciency of calibration results, such as speciﬁc targets like checkerboards [2]–[6], spherical target [7], gray code [8], multi-plane stereo target [9] and semantic objects [10].
+Fig. 1: The process of calibrating the camera’s intrinsic parameters through a pinhole model.
+However, existing calibration methods suffer from various problems. The ﬁrst issue is the reliability of the camera’s intrinsic parameters because most methods assume the camera’s intrinsic parameters are known or compute them through Zhang’s process [11]. The pinhole model is usually used when calibrating the camera’s intrinsic, but the actual camera projection process and the pinhole model are not completely corresponding [12]. The actual camera lens group is more complex and does not have an absolute optical center point [13]. As shown in Fig. 1, the whole calibration process is an approximation measure. At the same time, due to the defects of the camera structure and the uncertainty in the optimization of nonlinear functions, the obtained solution is usually suboptimal. Consequently, the accuracy of extrinsic calibration will be affected. Our experiment of the camera’s intrinsic calibration consistency also demonstrates the camera’s intrinsic calibration volatility.
+
+† Corresponding author.
+Guohang Yan, Feiyu He, Chunlei Shi, Pengjin Wei, Xinyu Cai
+and Yikang Li are with Autonomous Driving Group, Shanghai AI Laboratory, China. {yanguohang, hefeiyu, shichunlei, weipengjin, caixinyu, liyikang}@pjlab.org.cn
+
+Fig. 2: A novel LiDAR-camera calibration board pattern.
+In this paper, we present a novel joint calibration method that overcomes the inaccurate extrinsic calibration of LiDAR
+
+and camera caused by imperfect camera intrinsic parameters. Unlike existing calibration methods that only estimate the rotation and transformation between two sensor frames, the output of the proposed method contains the camera’s intrinsic parameters, distortion factor, and LiDAR-camera extrinsic parameters.
+Firstly, as shown in Fig. 2, we design a novel calibration board pattern, which contains a checkerboard used for the calibration of the camera’s intrinsic parameters and several circular holes for locating the LiDAR point cloud. We ﬁrst calibrate the camera initial intrinsic and board-camera initial extrinsic parameter by Zhang’s method [11]. Then, 2D circles center points on the image are calculated from these parameters and the calibration board size. By extracting the position of the circles center in LiDAR, we can project the circles center 3D points to the image plane by the LiDARcamera calibration parameters. The calculated 2D points and the projected 2D points form multiple 2D point pairs. We use the Euclidean distance between these point pairs to reﬁne the calibration parameters. At the same time, the constraints on reprojection of 3D-2D points of checkerboard corners are added to the optimization process.
+The contributions of this work is listed as follows:
+1) We propose a target-based joint calibration method of the camera intrinsic and LiDAR-camera extrinsic parameters.
+2) We design a novel calibration board pattern and propose a method to extract the 3D-2D corresponding points of LiDAR and camera based on this calibration board.
+3) The calibration of the LiDAR-camera is formulated as a nonlinear optimization function by minimizing the reprojection error between the 3D-2D point pairs of circles center and checkerboard corners on the calibration board.
+4) The proposed method shows promising performance on our simulated and real-world data sets; meanwhile, the related data sets and codes have been open-sourced to beneﬁt the community.
+II. RELATED WORK
+Researchers have proposed many approaches to address the intrinsic and extrinsic calibration of multi-model sensor calibration. Intrinsic calibration estimates the operational parameters of sensors and is usually performed before performing the extrinsic calibration. Typically, camera intrinsic calibration focus on estimating focal length, distortion factor, and skewness. Escalera et al. [14] ﬁnd both camera’s intrinsic and extrinsic parameters by detecting corner points and extracting horizontal and vertical sets of lines from a checkerboard. Bogdan et al. [15] estimate the focal length and distortion factor by a learning-based approach, and three different network architectures are proposed. Jin et al. [16] calibrate the intrinsic parameters of depth camera with cuboids, then optimize an objective function based on the distance error and angle error from reference cuboids. An et al. [17] apply Charuco board to overcome the deﬂects of
+
+checkerboard and ArUco board by building a Charuco boardbased cube structure for feature points extraction, which can be used to estimate perspective projection matrix and solve the intrinsic parameters. Lopez et al. [18] predict the extrinsic and intrinsic camera parameters through a single image by training a convolutional neural network. By contrast, extrinsic calibration estimates the rigid body transform between different sensor frames [19]. According to the requirement of auxiliary equipment, extrinsic calibration can be divided into two categories: target-based and target-less procedures.
+A. Target-based Method
+Target-based extrinsic calibration methods are widely used in the sensors calibration procedure. Researchers have designed various kinds of calibration targets to meet the characteristics of different sensors. Zhang et al. [20] solve the extrinsic parameters based on a checkerboard and reﬁne them by minimizing the re-projection error of laser points to the checkerboard plane. The method is easy to implement but cannot obtain the optimal solution directly. Geiger et al. [21] propose an approach to calibrate LiDAR to the camera by extracting the corner points from both point cloud and image, then estimate the rotation and translation by maximizing the alignments of normal vectors and minimizing pointto-plane distances respectively. Finally, the ﬁne registration is performed based on gradient descent. Huang et al. [22] perform extrinsic calibration by extracting vertices of the target from point cloud and image plane, and optimize the result by formulating a Perspective-n-Points problem which minimizes Euclidean distance of the corresponding corners. Intersection over Union (IoU) is also used for further reﬁnement. Zhou et al. [23] ﬁnd the extrinsic parameters by computing the correspondences of line features in both LiDAR and camera frame, and reﬁne the initial solution through a nonlinear optimization problem.
+B. Target-less Method
+Target-less method usually takes advantage of natural environmental features (such as lines) from the scene, by solving the geometric constraints, the extrinsic parameters can be derived. Levinson et al. [24] propose an online extrinsic calibration method by measuring the edge alignment. Edges in LiDAR points and image are extracted by depth discontinuity and Inverse Distance Transform (IDT) respectively, then minimize the re-projection error of 3D LiDAR edge points to the edge image to obtain the optimal solution. Ma et al. [25] calibrate camera to range sensor extracting line features in road scene, through segmentation and line ﬁtting, three 3D-2D line pairs that do not intersect at the same point are extracted and thus formulate a Perspective3-Lines problem which provides the initial calibration, and reﬁne it based on a random search algorithm on the 6-DoF parameters. Pandey et al. [26] use the reﬂection intensity measured by LIDAR and intensity values from camera and derive the optimal extrinsic parameters by maximizing a objective function based on mutual information. Similarly, Taylor et al. [27] perform LiDAR-camera calibration by
+
+Fig. 3: Overview of the different stages of the presented method. First, target detection is performed, and then the camera intrinsic parameters and the board-camera extrinsic parameters are calculated by checkerboard to obtain the 3D-2D corresponding points of LiDAR and camera. Finally, a nonlinear optimization is performed to obtain the ﬁnal calibration parameters. The inaccurate initial LiDAR-camera extrinsic parameters can be set by the sensor coordinate correspondence.
+
+normalizing the mutual information, and maximizing the gradient correlation of image and LiDAR points. Targetbased approach avoid this difﬁculty by using calibration targets to ensure the features can be extracted robustly and accurately. Nevertheless, both of the two methods solely solve the intrinsic parameters before extrinsic calibration. In contrast to the discussed related work, we provide a joint intrinsic and extrinsic calibration approach that output intrinsic and extrinsic parameters at the same time.
+III. METHODOLOGY
+This section introduces the details of our approach, including calibration target design, calibration target detection, calibration data collection, and calibration optimization process. Fig. 3 shows the overview of the presented method.
+A. Calibration target design
+According to the previous introduction, it isn’t easy to accurately calibrate the camera intrinsic parameters in practice. The calibration goal is to align the LiDAR point cloud with the camera image through intrinsic and extrinsic parameters. As long as the alignment accuracy of the point cloud and image is higher, the calibration’s intrinsic and extrinsic parameters can be considered more accurate. So we designed a joint optimization equation. The goal of joint optimization is to increase the alignment accuracy of the LiDAR point cloud and image. To this end, we need to design a novel calibration board that can achieve the joint optimization of intrinsic and extrinsic parameters.
+A well-designed calibration target should satisfy the following properties (i) detectable in all relevant sensors and (ii) observable features extracted for localization. Based on the working principles of LiDAR and camera, depth discontinuous such as edges for point cloud and corners in the image is most widely used as calibration features since they can be detected accurately and robustly. As discussed in [28], circular-shaped targets are more robust to be detected than rectangular shapes because they can
+
+interact with several LiDAR scans horizontally and vertically without missing edge information. As shown in Fig. 2, our design of calibration target combined both geometrical and visual characteristics, which is suitable for keypoints detection in LiDAR and camera modalities. We put one black and white checkerboard in the center, surrounded by four circular holes. On the one hand, the holes can use geometrical discontinuities in LiDAR point clouds. On the other hand, the checkerboard corners can provide spatial constraints. Fig. 2 also shows the details of our calibration target with a speciﬁc size. It is worth mentioning that the calibration board pattern can also be further modiﬁed based on this design to make data collection more convenient.
+B. Calibration target detection
+The ﬁrst step of target-based calibration is to locate the spatial position of the calibration in each sensor frame. LiDAR sensor returns the 3D position while camera returns the colored 2D image of the target. Here we conduct the extraction procedures of checkerboard and circular holes separately. There are many existing techniques for detecting the checkerboard from the image, for example, using popular computer vision libraries. In this work, we choose OpenCV [29] library for checkerboard detection. As for LiDAR data, different from the method mentioned in [30], we locate each center of holes by generating a point cloud mask PmLask, which has the same geometric structure as the calibration target. We assume the original point cloud data scanned by a LiDAR sensor is represented as P0L. Firstly, in order to ﬁlter outliers and remove the noise of the surrounding environment, we segment the regions of interest by presetting detection range. Then the calibration target plane is segmented from P0L through RANSAC plane ﬁtting with orientation constraints, which is denoted by PtLarget. Afterwards, we follow the grid search method described in [24] to ﬁnd the best match of PmLask and PtLarget in LiDAR coordinate system {L}. Rather than searching on 6-DoF, here
+
+Fig. 4: The process of accurately extracting the center of the circle on the calibration board.
+
+we focus on the yaw angle for rotation and x, y for translation relative to the calibration board plane.
+
+Ry∗aw, t∗x,y
+
+=
+
+arg min
+yaw,x,y
+
+(Ryaw(PmLask + tx,y) ∩ PtLarget) (1)
+
+Fig. 4 illustrates the principle of the matching procedure,
+
+when perfect alignment achieved, least number of points will
+
+fall into the circular holes, and thus the 3D position of each
+
+hole center can be located in {L}. Compared with [30], our
+
+method only requires the coordinate of the 3D point cloud
+
+without using additional intensity and ring id information,
+
+and the generated mask ﬁxes the relative position between
+
+holes, which greatly improves the robustness and accuracy of
+
+center detection. Finally, each calibration board can obtain
+
+the center points of the four circular holes in the LiDAR
+
+coordinate system.
+
+The calibration data collection process is similar to the
+
+camera’s intrinsic calibration data collection. As shown in
+
+Fig. 11, in order to ensure the calibration accuracy, checker-
+
+board corner features and circular hole features need to be
+
+collected in each area of the image. In practical applications,
+
+multiple calibration boards can be placed in different pose
+
+positions simultaneously so that we can perform calibration
+
+by collecting only a frame of data. Compared to the targetless
+
+calibration method, this method guarantees the alignment
+
+of point clouds and pixels in all image regions, ensuring
+
+that the near feature alignment is accurate enough to ensure
+
+far alignment accuracy. This solution is mainly used in the
+
+calibration room or production line calibration. After the
+
+calibration board environment is set and ﬁxed, it can be
+
+used for LiDAR-to-camera intrinsic and extrinsic parameter
+
+calibration of a large number of autonomous vehicles.
+
+C. Joint optimization process
+
+1) Circle Center 2D Points Calculation: For the extracted
+LiDAR 3D circles center points, we need to get the corre-
+sponding 2D points on the image. We ﬁrst calibrate the cam-
+era intrinsic K, distortion factor and board-camera extrinsic
+T(tx, ty, tz, rx, ry, rz) by checkerboard corners. According to the size of the calibration board, we get the four circles center points PB={p1b , p2b , · · · , p4b }∈R3 of each calibration board, where B represents the coordinate system of the calibration board. The transformed point pic is then projected onto the camera image plane by K and T.
+
+pic = K(R(r) · pib + t), k = 1, 2, · · · , 4.
+
+(2)
+
+Fig. 5: Collect the point cloud and checkerboard data of the main area in the image.
+
+where R(r) represents the rotation and can be parameterized
+
+by angle-axis representation r. t represents the translation
+
+with t=(tx, ty, tz)T . After adding distortion factor, the actual
+
+location of the projected point pi=(ui, vi) is
+
+pi = D(pic),
+
+(3)
+
+D(p) is the camera distortion model. The extracted LiDAR
+
+3D circles center points and the calculated 2d circles center
+
+points form multiple 3D-2D point pairs.
+
+2) Objective: Through the previous process, multiple sets
+
+of 3D-2D point pairs S of the circles center on the calibration
+
+board are obtained. The calibration goal is to align the
+
+LiDAR point cloud with the camera image through intrin-
+
+sic and extrinsic parameters. Therefore, to align the point
+
+cloud with the image, we minimize the following objective
+
+function:
+
+E = ||D(K(RLC · pi3D + tLC )) − pi2D||2 (4)
+i∈S
+
+where RLC , tLC represents the extrinsic parameter from LiDAR to the camera. p2D are the pixel coordinates of the center of the circles calculated by the checkerboard before joint optimization. p3D are the 3D points of the circles in the LiDAR coordinate system.
+3) Constraints: The above minimization is subject to a set of constraints. While ensuring the alignment of the LiDAR and the image, the constraints of the checkerboard on the camera’s intrinsic parameters are also required. the 3D points Pcorners∈R3 of the chessboard corners are in the coordinate system {B} of the calibration board. For the camera’s intrinsic parameters, the constraints are listed below:
+
+(||u − udet||2 + ||v − vdet||2) = 0
+
+(5)
+
+(u,v)∝Pcorners
+
+where (u, v) represents the pixel coordinate point of the Pcorners projection, (udet, vdet) is the actual detected chessboard corner pixel point. The rest of the constraints are that the 2D position of the circles center calculated by the calibration board size needs to remain invariant during optimization. The points set bi = [Xi, Yi, 0] are the circles center in the calibration board coordinate system.
+
+||D(K(RBC · bi + tBC )) − pi2D||2 = 0
+
+(6)
+
+i∈S
+
+where RBC, tBC represents the extrinsic parameter from the calibration board to the camera.
+4) Nonlinear Solution: The rotation matrix uses nine vectors to describe the rotation of 3 degrees of freedom, which is redundancy. Furthermore, the rotation matrix has to be an orthogonal matrix with determinant 1. These constraints increase the difﬁculty of the solution when estimating or optimizing rotation matrices. A better way to represent the rotation matrix is using the angle-axis rotation vector. In our implementation, an inaccurate initial Lidar-camera extrinsic are provided as initialization, and the calibration optimization equation is solved by the Ceres solver [31].
+
+IV. EXPERIMENTS
+The experiment in this paper consists of two parts: a realistic experiment on our driverless vehicle test platform and a simulated experiment based on the Carla engine [32]. The results show that the proposed method is superior to the state-of-the-art in terms of accuracy and robustness.
+
+A. Realistic Experiment
+We conducted experiments on real driverless platforms, Fig. 6 shows our realistic experiment setup.
+
+are different [13]. Barrel distortion usually occurs at short focal lengths, and pincushion distortion usually occurs at long focal lengths [33]. To evaluate the camera’s intrinsic calibration instability, We designed the camera intrinsic calibration consistency experiment. We used the camera to collect 6 uniformly distributed checkerboard image groups, and each group contained 100 frames. Then, we randomly selected 25 images from each group for the camera’s intrinsic calibration, performed 100 times per group. We obtained the residual vector whose statistical information (e.g. mean, variance) reveals the camera’s intrinsic calibration volatility. The results are shown in Fig. 7.
+Fig. 7: Camera’s intrinsic parameter calibration consistency evaluation.
+2) Ablation experiment: We designed an ablation experiment to evaluate our method better to split our onestage approach into a two-stage process. Then, we respectively compared the 3D-2D reprojection error of the circles center and checkerboard corners on the calibration board. We conducted six sets of experiments, each was calibrated with one-stage and two-stage respectively and compared the reprojection error of their checkerboard and the circles center. As shown in Table I, our method has a smaller reprojection error of the circles center than the two-stage calibration.
+
+TABLE I: Average Reprojection Error for One-stage and Two-stage Calibration
+
+One-stage Two-stage
+
+Checkboard Corners 0.757 pixel 0.546 pixel
+
+Circles Center 1.104 pixel 5.428 pixel
+
+Fig. 6: Our sensor suit. Top is Hesai Pandar64 LiDAR. Front is the camera Balser acA1920-40gc with different FOVs (F OV = 30◦, F OV = 60◦, F OV = 120◦).
+1) Camera Intrinsic Calibration Consistency Evaluation: Due to the complex internal structure of the camera and the way of data acquisition, the camera’s intrinsic parameters are usually unstable in calibration [12]. On the other hand, the inaccuracy of the camera’s intrinsic parameters is because the actual camera projection process and the pinhole model are not completely corresponding, and the equivalent camera optical center points at different distances
+
+3) Qualitative Results: To better visualize the performance of our method, the point cloud is projected to the image plane using the intrinsic and extrinsic parameters calibrated by our method. Results are shown in Fig. 8. As shown, using the calibration parameters extracted by the proposed approach enables a perfect alignment between both data modalities. Fig. 9 shows the effect of circles center reprojection on the calibration board.
+4) Comparison Experiments: We compared our methods with [23] and [30], which both use checkerboard as a calibration target. The ﬁrst one method [23] estimates the extrinsic by minimizing the distance from LiDAR points to the checkerboard plane estimated from the image. The second method [30] estimates the extrinsic by ArUco markers and circles center registration on the calibration board. We
+
+Fig. 8: Point cloud projections in four different scenarios, Fig. 10: LiDAR-camera extrinsic calibration by the method projection points color is represented by the LiDAR intensity. [30].
+
+Fig. 9: Realistic Experiment: Reprojection of the circles center on the calibration board. The black circle is the LiDAR projection point, and the white cross is the calculated image point.
+
+Fig. 11: Simulated Experiment: Reprojection of the circles center on the calibration board. The black circle is the LiDAR projection point, and the white cross is the calculated image point.
+
+ﬁrst spent a lot of effort calibrating the camera’s intrinsic parameter. As shown in Fig. 10, the A and B boxed in the image show that the distortion effect is good. However, due to the small error of the camera focal length and optical center, the parameters calibrated by the method [23] and [30] still cannot align the point cloud and the image in some places. For this case, our method can adjust the intrinsic parameters so that the point cloud and the image are perfectly aligned.
+B. Simulated Experiment
+We also conducted experiments with our method in the simulation environment. We can get the ground truth of the sensor’s calibration in the simulation environment. We generated three calibration data groups in the Carla engine [32], We quantitatively compared the mean of LiDARcamera extrinsic calibration with the ground truth in Table II. Fig. 10 also shows the effect of circles center reprojection on the calibration board. The result shows the proposed method can achieve accuracy and robustness performance.
+
+V. CONCLUSIONS
+This paper proposes a novel target-based calibration method, joint camera intrinsic and LiDAR-Camera extrinsic calibration. Qualitative and quantitative results demonstrate the performance and effectiveness of our method. The related codes and data have been open-sourced to beneﬁt the community.
+In the real environment, due to the sparsity of the point cloud, the extraction accuracy of the circle center may decrease. In the future, we look forward to using the multiframe data of vehicle motion to increase the density of the point cloud, thereby improving the extraction accuracy of the circle center to improve the calibration performance further.
+
+TABLE II: Translation and Rotation Quantitative Evaluation.
+
+tx(m) ty(m) tz(m) roll(°) pitch(°) yaw(°)
+
+GT
+
+0
+
+0.595 2.5
+
+−90
+
+0
+
+90
+
+Our −0.001 0.5912 2.5079 −90.002 0.011 90.004
+
+REFERENCES
+[1] C. Guindel, J. Beltra´n, D. Mart´ın, and F. Garc´ıa, “Automatic extrinsic calibration for lidar-stereo vehicle sensor setups,” in 2017 IEEE 20th International Conference on Intelligent Transportation Systems (ITSC), 2017, pp. 1–6.
+[2] H. Cai, W. Pang, X. Chen, Y. Wang, and H. Liang, “A novel calibration board and experiments for 3d lidar and camera calibration,” Sensors, vol. 20, no. 4, 2020. [Online]. Available: https://www.mdpi.com/1424-8220/20/4/1130
+[3] P. An, T. Ma, K. Yu, B. Fang, J. Zhang, W. Fu, and J. Ma, “Geometric calibration for lidar-camera system fusing 3d-2d and 3d-3d point correspondences,” Opt. Express, vol. 28, no. 2, pp. 2122–2141, Jan 2020. [Online]. Available: http: //opg.optica.org/oe/abstract.cfm?URI=oe-28-2-2122
+[4] W. Wang, K. Sakurada, and N. Kawaguchi, “Reﬂectance intensity assisted automatic and accurate extrinsic calibration of 3d lidar and panoramic camera using a printed chessboard,” Remote Sensing, vol. 9, no. 8, 2017. [Online]. Available: https://www.mdpi.com/ 2072-4292/9/8/851
+[5] J. Liu, Z. Yang, H. Huo, and T. Fang, “Camera calibration method with checkerboard pattern under complicated illumination,” Journal of Electronic Imaging, vol. 27, no. 4, pp. 1 – 11, 2018. [Online]. Available: https://doi.org/10.1117/1.JEI.27.4.043038
+[6] B. Chen, Y. Liu, and C. Xiong, “Automatic checkerboard detection for robust camera calibration,” in 2021 IEEE International Conference on Multimedia and Expo (ICME), 2021, pp. 1–6.
+[7] J. Ku¨mmerle, T. Ku¨hner, and M. Lauer, “Automatic calibration of multiple cameras and depth sensors with a spherical target,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2018, pp. 1–8.
+[8] S. Sels, B. Ribbens, S. Vanlanduit, and R. Penne, “Camera calibration using gray code,” Sensors, vol. 19, no. 2, 2019. [Online]. Available: https://www.mdpi.com/1424-8220/19/2/246
+[9] J. Zhang, J. Zhu, H. Deng, Z. Chai, M. Ma, and X. Zhong, “Multicamera calibration method based on a multi-plane stereo target,” Appl. Opt., vol. 58, no. 34, pp. 9353–9359, Dec 2019. [Online]. Available: http://opg.optica.org/ao/abstract.cfm?URI=ao-58-34-9353
+[10] Y. Zhu, C. Li, and Y. Zhang, “Online camera-lidar calibration with sensor semantic information,” in 2020 IEEE International Conference on Robotics and Automation (ICRA), 2020, pp. 4970–4976.
+[11] Z. Zhang, “A ﬂexible new technique for camera calibration,” IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 22, no. 11, pp. 1330–1334, 2000.
+[12] R. S. Sturm P. and L. S, “Imaging beyond the pinhole camera,” in On Calibration, Structure from Motion and Multi-View Geometry for Generic Camera Models, 2006, pp. 1–8.
+[13] R. Juarez-Salazar, J. Zheng, and V. H. Diaz-Ramirez, “Distorted pinhole camera modeling and calibration,” Applied Optics, vol. 59, no. 36, pp. 11 310–11 318, 2020.
+[14] A. de la Escalera and J. Armingol, “Automatic chessboard detection for intrinsic and extrinsic camera parameter calibration,” Sensors (Basel, Switzerland), vol. 10, pp. 2027–44, 03 2010.
+[15] O. Bogdan, V. Eckstein, F. Rameau, and J.-C. Bazin, “Deepcalib: A deep learning approach for automatic intrinsic calibration of wide ﬁeld-of-view cameras,” in Proceedings of the 15th ACM SIGGRAPH European Conference on Visual Media Production, ser. CVMP ’18. New York, NY, USA: Association for Computing Machinery, 2018. [Online]. Available: https://doi.org/10.1145/3278471.3278479
+[16] B. Jin, H. Lei, and W. Geng, “Accurate intrinsic calibration of depth camera with cuboids,” in Computer Vision – ECCV 2014, D. Fleet, T. Pajdla, B. Schiele, and T. Tuytelaars, Eds. Cham: Springer International Publishing, 2014, pp. 788–803.
+[17] G. H. An, S. Lee, M.-W. Seo, K. Yun, W.-S. Cheong, and S.-J. Kang, “Charuco board-based omnidirectional camera calibration method,” Electronics, vol. 7, no. 12, 2018. [Online]. Available: https://www.mdpi.com/2079-9292/7/12/421
+[18] M. Lopez, R. Mari, P. Gargallo, Y. Kuang, J. Gonzalez-Jimenez, and G. Haro, “Deep single image camera calibration with radial distortion,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), June 2019.
+[19] B. Khaleghi, A. Khamis, F. O. Karray, and S. N. Razavi, “Multisensor data fusion: A review of the state-of-the-art,” Inf. Fusion, vol. 14, no. 1, p. 28–44, Jan. 2013. [Online]. Available: https://doi.org/10.1016/j.inffus.2011.08.001
+
+[20] Q. Zhang and R. Pless, “Extrinsic calibration of a camera and laser range ﬁnder (improves camera calibration),” in 2004 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) (IEEE Cat. No.04CH37566), vol. 3, 2004, pp. 2301–2306 vol.3.
+[21] A. Geiger, F. Moosmann, O¨ . Car, and B. Schuster, “Automatic camera and range sensor calibration using a single shot,” in 2012 IEEE International Conference on Robotics and Automation, 2012, pp. 3936–3943.
+[22] J.-K. Huang and J. W. Grizzle, “Improvements to target-based 3d lidar to camera calibration,” IEEE Access, vol. 8, pp. 134 101–134 110, 2020.
+[23] L. Zhou, Z. Li, and M. Kaess, “Automatic extrinsic calibration of a camera and a 3d lidar using line and plane correspondences,” in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2018, pp. 5562–5569.
+[24] J. Levinson and S. Thrun, “Automatic online calibration of cameras and lasers.” in Robotics: Science and Systems, vol. 2, 2013, p. 7.
+[25] T. Ma, Z. Liu, G. Yan, and Y. Li, “Crlf: Automatic calibration and reﬁnement based on line feature for lidar and camera in road scenes,” 2021.
+[26] G. Pandey, J. R. McBride, S. Savarese, and R. M. Eustice, “Automatic extrinsic calibration of vision and lidar by maximizing mutual information,” Journal of Field Robotics, vol. 32, no. 5, pp. 696–722, 2015.
+[27] Z. Taylor and J. I. Nieto, “Automatic calibration of lidar and camera images using normalized mutual information,” 2012.
+[28] M. Velas, M. Spanel, Z. Materna, and A. Herout, “Calibration of rgb camera with velodyne lidar,” 2014.
+[29] G. Bradski, “The OpenCV Library,” Dr. Dobb’s Journal of Software Tools, 2000.
+[30] J. Beltra´n, C. Guindel, and F. Garc´ıa, “Automatic extrinsic calibration method for lidar and camera sensor setups,” arXiv preprint arXiv:2101.04431, 2021.
+[31] S. Agarwal, K. Mierle, and Others, “Ceres solver,” http://ceres-solver. org.
+[32] A. Dosovitskiy, G. Ros, F. Codevilla, A. Lopez, and V. Koltun, “CARLA: An open urban driving simulator,” in Proceedings of the 1st Annual Conference on Robot Learning, 2017, pp. 1–16.
+[33] F. Bukhari and M. N. Dailey, “Automatic radial distortion estimation from a single image,” Journal of mathematical imaging and vision, vol. 45, no. 1, pp. 31–45, 2013.
+
