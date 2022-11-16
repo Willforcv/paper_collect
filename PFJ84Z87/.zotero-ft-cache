@@ -1,0 +1,269 @@
+2576
+
+IEEE ROBOTICS AND AUTOMATION LETTERS, VOL. 4, NO. 3, JULY 2019
+
+RTFNet: RGB-Thermal Fusion Network for Semantic Segmentation of Urban Scenes
+Yuxiang Sun , Weixun Zuo , and Ming Liu , Senior Member, IEEE
+
+Abstract—Semantic segmentation is a fundamental capability for autonomous vehicles. With the advancements of deep learning technologies, many effective semantic segmentation networks have been proposed in recent years. However, most of them are designed using RGB images from visible cameras. The quality of RGB images is prone to be degraded under unsatisﬁed lighting conditions, such as darkness and glares of oncoming headlights, which imposes critical challenges for the networks that use only RGB images. Different from visible cameras, thermal imaging cameras generate images using thermal radiations. They are able to see under various lighting conditions. In order to enable robust and accurate semantic segmentation for autonomous vehicles, we take the advantage of thermal images and fuse both the RGB and thermal information in a novel deep neural network. The main innovation of this letter is the architecture of the proposed network. We adopt the encoder–decoder design concept. ResNet is employed for feature extraction and a new decoder is developed to restore the feature map resolution. The experimental results prove that our network outperforms the state of the arts.
+Index Terms—Semantic Segmentation, Urban Scenes, Deep Neural Network, Thermal Images, Information Fusion.
+I. INTRODUCTION
+S EMANTIC image segmentation of urban scenes is of critical signiﬁcance to autonomous vehicle systems. For instance, it is a fundamental component for scene understanding, which ensures reliable operations of autonomous vehicles in real-world urban environments. Many other applications, such as path planing [1] and environment modelling [2]–[5], could also beneﬁt from semantic segmentation.
+Recent advancements of deep learning technologies have attracted great attentions from both the academia and industry. Many effective semantic segmentation algorithms based on deep neural networks have been proposed in recent years [6]–[12]. Among most of the state of the arts, Convolutional Neural Network (CNN) has been widely used and achieved great success
+Manuscript received November 7, 2018; accepted February 25, 2019. Date of publication March 13, 2019; date of current version April 24, 2019. This letter was recommended for publication by Associate Editor Y. Joo and Editor Y. Choi upon evaluation of the reviewers’ comments. This work was supported in part by the Shenzhen Science, Technology, and Innovation Commission (SZSTI) project JCYJ20160401100022706, in part by the National Natural Science Foundation of China project U1713211, in part by the Hong Kong University of Science and Technology Project IGN16EG12, and in part by the Hong Kong Research Grant Council (RGC) projects 11210017 and 21202816. (Corresponding author: Ming Liu.)
+The authors are with the Department of Electronic and Computer Engineering, The Hong Kong University of Science and Technology, Clear Water Bay, Kowloon, Hong Kong SAR, China (e-mail: sun.yuxiang@outlook.com, eeyxsun@ust.hk; wzuo@connect.ust.hk; eelium@ust.hk).
+Digital Object Identiﬁer 10.1109/LRA.2019.2904733
+
+[13]. However, the mainstream semantic segmentation networks are designed to work with 3-channel RGB images captured by visible cameras. The segmentation performance is prone to be degraded when the lighting conditions are not satisﬁed. For instance, most algorithms would fail to correctly segment objects in almost total darkness.
+Thermal imaging cameras are able to see under various lighting conditions [14]. Different from visible cameras that work in visible light spectrum ranging from 0.4µm to 0.7µm, they form images using thermal radiations emitted by all matters with temperatures above absolute zero [15]. Almost anything that creates heat can be seen with thermal. Thermal imaging cameras are initially invented for military uses, but the price has dropped down in recent years so that the cameras could be increasingly used in civilian applications, such as remote sensing [16], autonomous surveillance [17] and Advanced Driver Assistance Systems (ADAS) [18]. It should be noted that thermal imaging cameras are different from Near-Infra-Red (NIR) cameras. The former detects wavelength up to 14µm, while the latter merely works in the NIR spectrum that ranges from 0.7µm to 1.4µm [14]. The NIR spectrum is not visible to human eyes, but can be sensed by silicon image sensors. Consequently, NIR cameras can be simply manufactured by adding a NIR ﬁlter in the front of the CMOS or CCD sensors of visible cameras, whereas the manufacturing of thermal imaging cameras are much more complicated.
+In this letter, we exploit the beneﬁts of images captured in thermal radiations, and fuse the RGB and thermal images to get robust and accurate semantic segmentation in urban scenes. The main novelty of our work is the proposed data fusion network architecture. Speciﬁcally, we adopt the Encoder-Decoder design concept [8]. ResNet [19] is employed in two encoders for feature extraction. A new decoder is developed to restore the feature-map resolution. The data fusion is performed in the encoding stage by the element-wise summation with feature maps. The contributions of this letter are summarized as follows:
+1) We develop a novel deep neural network that fuses both the RGB and thermal information for semantic segmentation in urban scenes.
+2) We prove that using thermal information is able to improve the semantic segmentation performance.
+3) We compare our network with the state of the arts on a public dataset and achieve the superior performance.
+The remainder of this letter is structured as follows. In section II, related work has been reviewed. In section III, we
+
+2377-3766 © 2019 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+
+SUN et al.: RTFNET: RGB-THERMAL FUSION NETWORK FOR SEMANTIC SEGMENTATION OF URBAN SCENES
+
+2577
+
+describe our network in detail. In section IV, experimental results and discussions are presented. Conclusions and future work are drawn in the last section.
+II. RELATED WORK
+Semantic segmentation refers to associating each pixel of an image with a class label. We review selected semantic segmentation networks in this section.
+A forerunner of deep neural network-based semantic segmentation algorithm is the Fully Convolutional Networks (FCN) proposed by Shelhamer et al. [7]. They adapted the existing image classiﬁcation networks, such as VGG-16 [20] and GoogLeNet [21], into fully convolutional networks by replacing the fully connected layers with the convolutional ones. The downsampled feature maps are upsampled to the desired resolution through deconvolutional networks [6].
+SegNet introduced the Encoder-Decoder concept for semantic segmentation [8]. It adopted the VGG network [20] as the encoder, and the mirrored version as the decoder. The locations of the maximum element during pooling were employed for the unpooling operations in the decoder.
+UNet was initially proposed for biomedical image segmentation by Ronneberger et al. [9], but it generalized well to other domains. It consisted of a contracting path and an expansive path. Similar as the Encoder-Decoder architecture, the contracting path extracts feature maps from input images, while the expansive path restores the feature maps to the desired resolution. The feature maps from the encoder were passed to the decoder through short-cut connections.
+PSPNet was designed by Zhao et al. [10] for semantic segmentation in complex scenes. They observed that incorporating contextual information is able to improve the segmentation performance. A 4-level pyramid pooling structure was developed in PSPNet to extract the contextual information from images, which covered the whole, half of and small portions of images.
+Wang et al. [11] developed the DUC-HDC network with the proposed Dense Upsampling Convolution (DUC) and the Hybrid Dilated Convolution (HDC) techniques. The DUC was designed to get pixel-wise prediction maps in a learnable way. It ﬁrstly transformed the feature map at the end of the encoder to the one with more channels, and then shufﬂed the feature map to the desired shape. The HDC was designed to alleviate the gridding issue caused by the standard dilated convolution operation [22]. To this end, it employed different dilation rates in the different layers of the encoder.
+ERFNet was proposed to efﬁciently parse urban scenes in real time by Romera et al. [12]. They proposed a non-bottleneck residual module using 1-D convolution ﬁlters. Speciﬁcally, the sizes of the convolutional kernels are 3 × 1 and 1 × 3, while the sizes of commonly used ﬁlters are of 2-D, such as 3 × 3. The proposed residual module using the 1-D ﬁlters were demonstrated to be able to reduce parameters, which was favour of real-time tasks. ERFNet was formed by integrating the proposed residual module with the Encoder-Decoder structure.
+The aforementioned networks merely work with RGB images captured by visible cameras. Hazirbas et al. [23] proposed
+
+FuseNet using both the RGB and depth images provided by RGB-D cameras [24]–[26]. FuseNet adopted the EncoderDecoder architecture. The encoder consisted of two parallel feature extraction modules that take as inputs the registered RGB and depth images, respectively. The depth feature maps were fused into the RGB branch through an element-wise summation. In the encoders of FuseNet, VGG-16 was employed as the backbone.
+MFNet was proposed by Ha et al. [27] for semantic segmentation of urban scenes using both the visible and thermal cameras. Similar as FuseNet, MFNet also adopted the Encoder-Decoder architecture. Two identical feature extractors were designed for RGB and thermal images, respectively. A mini-inception block with dilated convolution was proposed in the encoders. To fuse the feature maps from the RGB and thermal encoders, a short-cut block was designed to concatenate the two feature maps from the two encoders. The concatenated feature map was then added to the output of the corresponding last layer of the decoder.
+III. THE PROPOSED NETWORK
+The motivation of this work is to enable robust and accurate semantic segmentation of urban scenes for autonomous vehicles. The key idea is to take the advantage of thermal cameras, and fuse both the RGB and thermal information to achieve the superior performance.
+A. The Overall Architecture
+We present a novel deep neural network termed RTFNet for semantic segmentation of urban scenes. Fig. 1 displays the overall architecture of RTFNet. As the Encoder-Decoder structure has been conﬁrmed as an effective architecture in many semantic segmentation networks [13], RTFNet also adopts this structure. As shown in Fig. 1, RTFNet consists of three modules: an RGB encoder and a thermal encoder that are employed to extract features from RGB and thermal images, respectively; a decoder that is used to restore the resolution of feature maps. Different from the related work, such as SegNet [8], the decoder module in RTFNet is not a mirrored version of the encoder module. The encoder and decoder are asymmetrically designed. We have two large encoders and one small decoder. At the end of RTFNet, we use a softmax layer to get the probability map for the semantic segmentation results.
+B. The Encoders
+We design two encoders to extract features from the RGB and thermal images, respectively. The structures of the two encoders are identical to each other except the number of input channels in the ﬁrst layer. Different from FuseNet [23] and MFNet [27], we employ ResNet [19] as the feature extractor. In order to avoid the excessive loss of spatial information of feature maps, we delete the average pooling and the fully connected layers of ResNet. This also helps to reduce the model size.
+ResNet starts with an initial block that sequentially includes a convolutional layer, a batch normalization layer and a ReLu activation layer. As ResNet is designed using 3-channel RGB
+
+2578
+
+IEEE ROBOTICS AND AUTOMATION LETTERS, VOL. 4, NO. 3, JULY 2019
+
+Fig. 1. The overall architecture of the proposed RTFNet. It consists of an RGB encoder, a thermal encoder and a decoder. The blue and yellow trapezoids indicate the encoders (left) and the decoder (right), respectively. We employ ResNet [19] with the average pooling and the fully connected layers removed as the feature extractor. The thermal feature maps are fused into the RGB encoder through the element-wise summation. There are 5 layers in the decoder, in which each layer sequentially consists of the Upception blocks A and B. The output resolutions of layers and blocks are indicated in the ﬁgure given for an example input of 480 × 640. The ﬁgure is best viewed in color.
+
+images, we modify the number of input channels of the convolutional layer in the initial block of the thermal encoder to 1. Following the initial block, a max pooling layer and four residual layers are sequentially employed to gradually reduce the resolution and increase the number of channels of the feature maps. We refer readers to the ResNet paper [19] to get the details of the residual layers.
+We fuse the RGB and the thermal information in the RGB encoder by element-wisely adding the corresponding RGB and thermal feature maps. Note that the feature-map shape is not changed after the fusion operation. As shown in Fig. 1, we place the fusion layers behind the initial block and each residual layer of ResNet. The output of the last fusion layer is taken as input for the decoder.
+
+C. The Decoder
+The decoder is mainly designed to get dense predictions. Through the decoder, the feature map resolution is gradually restored to that of the input images. We propose a network block termed Upception in this section. It consists of two sub-blocks: The Upception block A and B. The block A keeps the resolution and the number of feature map channels unchanged; The block B increases the resolution and decreases the channels of the feature maps.
+Fig. 2 illustrates the architecture of the Upception block. In block A, there are 3 convolutional layers, through which the resolution and the number of feature channels are not changed. We introduce a short cut from the input to the output of the third batch normalization layer. The input and the feature map are element-wisely added up. In block B, the ﬁrst convolutional layer (Conv 1) keeps the resolution unchanged and decreases the number of feature channels by a factor of 2. The second convolutional layer (Conv 2) keeps both the resolution and the number of feature channels unchanged. Similar as block A, the input is
+
+Fig. 2. The architecture of the proposed Upception block. Conv, TransConv and BN refer to the convolutional layers, transposed convolutional layers and the batch normalization layers, respectively. The detailed conﬁgurations for the convolutional and transposed convolutional layers are listed in Tab. I. The ﬁgure is best viewed in color.
+transferred through a short-cut and added with the output of the third batch normalization layer. Since the ﬁrst transposed convolutional layer (TransConv 1) keeps the number of channels unchanged and increases the resolution by a factor of 2, the second transposed convolutional layer (TransConv 2) is required to increase the resolution and decrease the number of feature channels. Otherwise, the shapes of the feature maps will not match so that the summation operation cannot be performed. Detailed conﬁgurations for the neural network layers in the Upception blocks are displayed in Tab. I.
+As shown in Fig. 1, there are 5 layers in the decoder. Each decoder layer sequentially consists of an Upception block A and an Upception block B. The Upception block B enables each decoder layer to increase the feature-map resolution and decrease the number of feature channels by a factor of 2. Note that
+
+SUN et al.: RTFNET: RGB-THERMAL FUSION NETWORK FOR SEMANTIC SEGMENTATION OF URBAN SCENES
+
+2579
+
+TABLE I THE DETAILED CONFIGURATIONS FOR THE CONVOLUTIONAL (Conv) AND TRANSPOSED CONVOLUTIONAL (TransConv) LAYERS IN THE UPCEPTION BLOCKS. c, h, w, n REFER TO THE NUMBER OF CHANNELS, THE HEIGHT AND THE WIDTH OF THE FEATURE MAP, THE NUMBER OF CLASSES OF THE SEMANTIC SEGMENTATION.
+(1-4) REPRESENTS THAT THE UPCEPTION BLOCKS ARE FROM THE 1-ST TO THE 4-TH DECODER LAYERS. (5) REPRESENTS THAT THE UPCEPTION BLOCKS ARE FROM THE 5-TH (THE LAST) DECODER LAYER. THE DASH SYMBOL DENOTES THAT THE SIZE IS EQUAL TO THAT IN (1-4)
+
+TABLE II THE NUMBER (c) OF THE INPUT CHANNELS OF THE FIRST CONVOLUTIONAL
+LAYER OF UPCEPTION BLOCK A WITH DIFFERENT RESNET VARIANTS
+the number of the output channels of the Upception block B in the last decoder layer is set to the number of the semantic classes. As we use the dataset provided in [27], the number is set to 9 in this letter.
+According to [19], the ResNet variants are named by the number of layers as ResNet-18, ResNet-34, ResNet-50, ResNet-101 and ResNet-152, respectively. Our RTFNet variants are named according to the used ResNet variants. Since the number of output channels of the last residual layer of ResNet differs between the variants, the number of the input channels of the ﬁrst convolutional layer of Upception block A varies accordingly. Detailed numbers are displayed in Tab. II.
+IV. EXPERIMENTAL RESULTS AND DISCUSSIONS
+In this section, we evaluate our proposed RTFNet and compare it with the state-of-the-art networks through extensive experiments on a public dataset.
+A. The Dataset
+We use the public dataset released in [27]. It records urban scenes using an InfReC R500 camera [28] that can stream RGB and thermal images simultaneously. The dataset contains 1569 pairs of RGB and thermal images, among which 820 are taken at daytime and 749 are taken at nighttime. There are 9 handlabelled semantic classes including the unlabelled background class in the ground truth. The image resolution in the dataset is 480 × 640.
+We follow the dataset splitting scheme proposed in [27]. The training set consists of 50% of the daytime images and 50% of the nighttime images. The validation set consists of 25% of the daytime images and 25% of the nighttime images. The other images are used for testing.
+
+B. Training Details
+We implement our proposed RTFNet using the PyTorch 0.4.1 with the CUDA 8.0 and cuDNN 7.0 libraries. Our RTFNet is trained on a PC with an Intel 3.6GHz i7 CPU and a single NVIDIA 1080 Ti graphics card. As the graphics card memories are limited to 11 GB, we accordingly adjust the batch sizes for different networks.
+We train RTFNet with the pre-trained weights of ResNet provided by PyTorch except the ﬁrst convolutional layer of ResNet in the thermal encoder, because we have 1-channel input data while ResNet is designed for 3. The ﬁrst convolutional layer of the encoder as well as the convolutional and transposed convolutional layers in the decoder are initialized using the Xavier scheme [29].
+We use the Stochastic Gradient Descent (SGD) optimization solver [30] for training. The momentum and weight decay are set to 0.9 and 0.0005, respectively. The initial learning rate is set to 0.01. We adopt the exponential decay scheme to gradually decrease the learning rate. The input training data are randomly shufﬂed before each epoch. Moreover, the training data are augmented using the ﬂip technique. We train the network until convergence, at which no further decrease in the loss is observed.
+
+C. Evaluation Metrics
+
+We adopt two metrics for the quantitative evaluations of the semantic segmentation performance. The ﬁrst is the Accuracy (Acc) for each class, which is also known as recall. The second is the Intersection over Union (IoU) for each class. The average values across all the classes for the two metrics are denoted as mAcc and mIoU, respectively. They are calculated in the formulas:
+
+mAcc
+
+=
+
+1 N
+
+N i=1
+
+TPi TPi + FNi
+
+,
+
+(1)
+
+mIoU
+
+=
+
+1 N
+
+N i=1
+
+TPi
+
++
+
+TPi FPi
+
++
+
+FNi
+
+,
+
+(2)
+
+where N is the number of classes. In this work, N =
+
+9 including the unlabelled class. TPi =
+
+K k=1
+
+Pkii
+
+,
+
+FPi =
+
+2580
+
+IEEE ROBOTICS AND AUTOMATION LETTERS, VOL. 4, NO. 3, JULY 2019
+
+Fig. 3. The ablation study results. The horizontal axis of the plot shows different ResNet used as the encoder. NRE, NTE and NUB are three variants of our RTFNet. NRE and NTE have no RGB and thermal encoder, respectively. NUB has no Upception block. The ﬁgure clearly demonstrates the superiority of using ResNet with more layers as the encoder. In addition, the beneﬁts brought by using the thermal information and our proposed Upception block are also proven by the comparison. The ﬁgure is best viewed in color.
+
+K k=1
+
+N j=1,j=i
+
+Pkji
+
+and
+
+FNi =
+
+K k=1
+
+N j=1,j=i
+
+Pkij
+
+are
+
+the
+
+true positives, false positives and false negatives for each class
+
+i, where K is the number of tested frames, Pkii is the number
+
+of pixels for class i that is correctly classiﬁed as class i in the
+
+frame k, Pkji is the number of pixels for class j that is incorrectly
+
+classiﬁed as class i in the frame k, Pkij is the number of pixels
+
+for class i that is incorrectly classiﬁed as class j in the frame k.
+
+D. Ablation Study
+In the ablation study, we test RTFNet by removing the thermal encoder to see the beneﬁts brought by using the thermal information. We term the variant as NTE because there is No Thermal Encoder (NTE). Similarly, we remove the RGB encoder from our RTFNet to see how the network performs when only given the thermal information. The variant has No RGB Encoder (NRE), which is accordingly termed as NRE. Moreover, to evaluate the beneﬁt of our proposed Upception block, we replace each decoder layer of RTFNet with a simple decoder layer, which consists of a transposed convolutional layer followed by a batch normalization layer and a ReLu activation layer sequentially. This variant is termed as NUB, which represents that there is No Upception Block (NUB) in our RTFNet. Similar as our original design, there are 5 decoder layers in NUB to gradually restore the feature map to the desired resolution. In order to evaluate the performance of different encoders, all the variants including our RTFNet are tested with different ResNet conﬁgurations.
+Fig. 3 illustrates the ablation study results. In general, the segmentation performance becomes better when using ResNet with more layers as the encoder. Particularly, the performance improves greatly from ResNet-34 to ResNet-50. However, more layers than ResNet-50 could not contribute too much for the performance improvement. Thus, ResNet-50 could be considered as a nice trade-off between the accuracy and speed. By comparing the results of NRE and NTE, we ﬁnd that NRE generally gives better performance, but they are both inferior to our RTFNet.
+
+This proves that the data fusion is an effective approach to increase the performance, and the thermal information contributes remarkably in the data fusion. By comparing NUB with the others, we could ﬁnd that our proposed Upception block plays a signiﬁcant role in RTFNet because the performance decreases notably without it. This proves the effectiveness of our proposed Upception block.
+Tab. IV displays the testing results of NRE and NTE on the daytime and nighttime scenarios, respectively. We could ﬁnd that only using the RGB information in the daytime scenario gives better results, while only using the thermal information in the nighttime scenario gives the better results. This is expected because RGB images are more informative in daytime and thermal images are more informative in nighttime.
+In order to demonstrate the effectiveness of our fusion strategy. We delete the fusion layers except the last one from our RTFNet. We term this variant as OLF (Only Last Fusion). We also drop the thermal encoder and modify the RGB encoder to take as input the 4-channel RGB-Thermal data. The 4-channel data are obtained by simply concatenating the 3-channel RGB data with the 1-channel Thermal data. This variant is termed as FCI (Four-Channel Inputs). Tab. V displays the comparative results. We can see that our RTFNet achieves the best results in both mAcc and mIoU.
+E. Comparative Results
+We compare our RTFNet with ERFNet [12], UNet [9], PSPNet [10], SegNet [8], DUC-HDC [11], MFNet [27] and FuseNet [23] in this section. Because the networks except FuseNet and MFNet are all designed using the 3-channel RGB data, to ensure fair comparisons we train the networks with the 3-channel RGB data and the 4-channel RGB-Thermal data, respectively. We modify the input layers of these networks to accommodate the 4-channel RGB-Thermal data. All the networks are trained until the loss converges with the same augmented training images as those used for our RTFNet.
+1) The Overall Results: Tab. III displays the quantitative comparative results for the networks. As most of the pixels are unlabelled in the dataset [27], the evaluation results for the unlabelled class are similar across different networks (around 96% ∼ 99%). They are less informative and not displayed in the table. In general, we can see from Tab. III that our RTFNet achieves the best results in terms of both the mAcc and mIoU metrics across all the networks. This proves the superiority of our proposed network. By comparing the RTFNet variants, we can see that RTFNet-152 is slightly better than RTFNet-50. In some cases, RTFNet-50 is even better than RTFNet-152. We conjecture the major reason is that more layers would be prone to causing over ﬁtting, especially for our case that the number of training images in the dataset is limited.
+We ﬁnd that there are some 0.0 Acc and IoU results in the table, especially in the Guardrail class. As indicated in the dataset paper [27], the classes in the dataset are extremely unbalanced. The Guardrail class occupies the fewest portion of the pixels, so there are very few training data for the Guardrail class. We believe that the models are not well trained on this class due to
+
+SUN et al.: RTFNET: RGB-THERMAL FUSION NETWORK FOR SEMANTIC SEGMENTATION OF URBAN SCENES
+
+2581
+
+TABLE III THE COMPARATIVE RESULTS (%) ON THE TEST DATASET FROM [27]. THE RESULTS FOR THE UNLABELLED CLASS ARE NOT DISPLAYED. THE VALUE 0.0 REPRESENTS THAT THERE IS NO TRUE POSITIVES. IN OTHER WORDS, THE CLASS CANNOT BE DETECTED TOTALLY. 3c AND 4c REPRESENT THAT THE NETWORKS ARE TESTED WITH THE 3-CHANNEL RGB DATA AND THE 4-CHANNEL RGB-THERMAL DATA, RESPECTIVELY. THE BOLD FONT HIGHLIGHTS THE BEST RESULT IN
+EACH COLUMN. THE SUPERIORITY OF OUR PROPOSED RTFNET IS CLEARLY PROVEN IN THIS TABLE
+
+TABLE IV THE COMPARATIVE RESULTS OF MACC (%) ON THE DAYTIME AND NIGHTTIME SCENARIOS FOR THE NRE AND NTE VARIANTS. THE BOLD FONT HIGHLIGHTS
+THE BETTER RESULTS IN EACH SCENARIO
+
+TABLE VI THE COMPARATIVE RESULTS (%) ON THE DAYTIME AND NIGHTTIME SCENARIOS. 3c AND 4c REPRESENT THAT THE NETWORKS ARE TESTED WITH THE 3-CHANNEL RGB INPUTS AND THE 4-CHANNEL RGB-THERMAL INPUTS, RESPECTIVELY. THE BOLD FONT HIGHLIGHTS THE BEST RESULT IN EACH COLUMN. OUR PROPOSED RTFNET OUTPERFORMS THE OTHERS WITH BOTH
+THE DAYTIME AND NIGHTTIME IMAGES
+
+TABLE V THE COMPARATIVE RESULTS OF MACC AND MIOU (%) FOR DIFFERENT FUSION
+STRATEGIES ON THE TEST DATASET. THE BOLD FONT HIGHLIGHTS THE BEST RESULTS
+
+the insufﬁcient training data, so that the 0.0 results appear during the test. In addition, there are 393 images in the test dataset, but only 4 images containing the Guardrail class. Thus, we think that the extreme few pixels on the Guardrail class in the test dataset is another reason for the 0.0 results.
+According to Tab. III, the second best network is DUC-HDC and the third would be FuseNet. The DUC-HDC outperforms ours in some classes, such as the guardrail and color cone, although it is not specially designed for the 4-channel RGBThermal data. This proves the generalization capability of DUCHDC. For the other networks, the performance is similar to each other. By comparing the 3-channel and 4-channel results of ERFNet, UNet, PSPNet, SegNet and DUC-HDC, we ﬁnd that all the 4-channel results are better than those of the 3-channel
+
+results. This proves that incorporating the thermal information could improve the segmentation performance.
+2) The Daytime and Nighttime Results: We also evaluate the networks using the daytime and nighttime images from the test dataset. Tab. VI displays the comparative results. As we can see, our proposed network achieves the best results in both the two scenarios. In the daytime, we ﬁnd that the 4-channel results of ERFNet and UNet are slightly inferior to the corresponding 3-channel results. We believe the reason is that the RGB and
+
+2582
+
+IEEE ROBOTICS AND AUTOMATION LETTERS, VOL. 4, NO. 3, JULY 2019
+
+Fig. 4. The sample qualitative results for the data-fusion networks. The left 4 and right 4 columns present the results in typical lighting conditions in the daytime and nighttime scenarios, respectively. The columns 1-3 show high-dynamic range lighting conditions. The column 4 shows the glares of oncoming headlights. The columns 6-8 show almost total darkness lighting conditions. The comparative results prove the robustness and superiority of our approach. The ﬁgure is best viewed in color.
+
+thermal images are slightly misaligned spatially and temporally [27]. The spatial and temporal misalignments would be caused by the camera calibration errors and the synchronization errors, respectively. In the daytime, both the RGB and thermal images are informative and visually clear. So the slight misalignments could confuse the network and hence degrade the performance. For the other networks, we think that the large receptive ﬁelds in their structures alleviate this problem. In the nighttime, the RGB images are little informative because they are not clear (almost black). The thermal information would dominate the segmentation, so the slight misalignments could not greatly inﬂuence the accuracy. Thus, we can see in Tab. VI that the 4channel results are much better than the corresponding 3-channel results.
+3) The Inference Speed: We measure the inference speed of the networks with an NVIDIA GeForce GTX 1080 Ti graphics card and an NVIDIA Jetson TX2 (Tegra X2) embedded platform. Tab. VII displays the average time cost on the test dataset given the input resolution of 480 × 640. As we can see, our RTFNet50 exhibits a real-time inference speed on GTX 1080 Ti and an acceptable speed on Jetson TX2. Compared with RTFNet-152, we think that it would be better to use RTFNet-50 in practical applications, in which the inference speed is normally a critical concern. We ﬁnd that the other networks are really fast on GTX 1080 Ti and most of them could run real-timely on Jetson TX2. However, they are unable to provide satisfactory accuracy as ours.
+
+TABLE VII THE INFERENCE SPEED FOR EACH NETWORK. 4c REPRESENT THAT THE NETWORKS ARE TESTED WITH THE 4-CHANNEL RGB-THERMAL INPUTS. ms AND FPS REPRESENT THE TIME COST IN MILLISECOND AND THE SPEED IN
+FRAME-PER-SECOND, RESPECTIVELY
+4) The Qualitative Demonstrations: Fig. 4 displays sample qualitative results for the data-fusion networks in typical daytime and nighttime scenarios. In general, we can see that our RTFNet is able to robustly and accurately segment the objects under various lighting conditions that are not well satisﬁed or even challenging. By comparing our results with the ground truth, we could ﬁnd that the object boundaries segmented by RTFNet are
+
+SUN et al.: RTFNET: RGB-THERMAL FUSION NETWORK FOR SEMANTIC SEGMENTATION OF URBAN SCENES
+
+2583
+
+not so sharp. This would be caused by the heavy downsampling in the encoders, which greatly reduces the spatial information on the details. The columns 1-3 show the lighting conditions with high-dynamic ranges. The pedestrians could not be clearly seen in the RGB images even it is in daytime. The column 4 shows that the cars are hidden by the glares of the oncoming headlights. In the columns 6-8, the objects are almost invisible because there is almost no lighting in these scenarios. We can see that our RTFNet outperforms the other networks even they are all designed with the RGB and thermal data fusion. The comparison demonstrates the superiority of our network.
+V. CONCLUSION
+We proposed here a novel RGB and thermal data fusion-based network for the semantic segmentation of urban scenes. The experimental results demonstrate the superiority of our network in various scenarios, even in challenging lighting conditions. However, there are still several issues to be addressed in the future. Firstly, the inference speed is less competitive especially on embedded platforms. So we would like to speed up our network with an emphasis on the optimization for embedded platforms. Secondly, the object boundaries segmented by our network are not so sharp. To produce sharp boundaries and keep more detailed information, we will use short-cuts to introduce low-level feature maps to high-level feature maps. Lastly, the RGB or thermal image may be more informative than the other in some cases. For example, thermal images would be less informative for objects sharing similar temperature, which would be a negative side of thermal cameras. Giving lower weights to the less contributive information or discarding it completely would beneﬁt the segmentation. In the future, we would like to develop discriminative mechanisms to ﬁnd data that are more informative.
+ACKNOWLEDGMENT
+The authors would like to thank P. Yun for the discussions on the training skills of deep neural networks.
+REFERENCES
+[1] C. Wang, W. Chi, Y. Sun, and M. Q.-H. Meng, “Autonomous robotic exploration by incremental road map construction,” IEEE Trans. Autom. Sci. Eng., to be published.
+[2] J. Cheng, Y. Sun, and M. Q.-H. Meng, “A dense semantic mapping system based on CRF-RNN network,” in Proc. 18th Int. Conf. Adv. Robot., Jul. 2017, pp. 589–594.
+[3] Y. Sun, M. Liu, and M. Q.-H. Meng, “Improving RGB-D SLAM in dynamic environments: A motion removal approach,” Robot. Auton. Syst., vol. 89, pp. 110–122, 2017.
+[4] C. Lu, M. J. G. van de Molengraft, and G. Dubbelman, “Monocular semantic occupancy grid mapping with convolutional variational encoder– decoder networks,” IEEE Robot. Autom. Lett., vol. 4, no. 2, pp. 445–452, Apr. 2019.
+[5] Y. Sun, M. Liu, and M. Q.-H. Meng, “Motion removal for reliable RGB-D SLAM in dynamic environments,” Robot. Auton. Syst., vol. 108, pp. 115– 128, 2018.
+[6] H. Noh, S. Hong, and B. Han, “Learning deconvolution network for semantic segmentation,” in Proc. IEEE Int. Conf. Comput. Vision, Dec. 2015, pp. 1520–1528.
+
+[7] E. Shelhamer, J. Long, and T. Darrell, “Fully convolutional networks for semantic segmentation,” IEEE Trans. Pattern Anal. Mach. Intell., vol. 39, no. 4, pp. 640–651, Apr. 2017.
+[8] V. Badrinarayanan, A. Kendall, and R. Cipolla, “SegNet: A deep convolutional encoder-decoder architecture for image segmentation,” IEEE Trans. Pattern Anal. Mach. Intell., vol. 39, no. 12, pp. 2481–2495, Dec. 2017.
+[9] O. Ronneberger, P. Fischer, and T. Brox, “U-Net: Convolutional networks for biomedical image segmentation,” in Proc. Med. Image Comput. Comput.-Assisted Intervention. Cham, Switzerland: Springer International Publishing, 2015, pp. 234–241.
+[10] H. Zhao, J. Shi, X. Qi, X. Wang, and J. Jia, “Pyramid scene parsing network,” in Proc. IEEE Conf. Comput. Vision Pattern Recognit., Jul. 2017, pp. 6230–6239.
+[11] P. Wang et al., “Understanding convolution for semantic segmentation,” in Proc. IEEE Winter Conf. Appl. Comput. Vision, Mar. 2018, pp. 1451–1460.
+[12] E. Romera, J. M. Álvarez, L. M. Bergasa, and R. Arroyo, “ERFNet: efﬁcient residual factorized convnet for real-time semantic segmentation,” IEEE Trans. Intell. Transp. Syst., vol. 19, no. 1, pp. 263–272, Jan. 2018.
+[13] F. Lateef and Y. Ruichek, “Survey on semantic segmentation using deep learning techniques,” Neurocomput., vol. 338, pp. 321–348, 2019.
+[14] R. Gade and T. B. Moeslund, “Thermal cameras and applications: A survey,” Mach. Vision Appl., vol. 25, no. 1, pp. 245–262, Jan. 2014.
+[15] M. Vollmer et al., Infrared Thermal Imaging: Fundamentals, Research and Applications. Hoboken, NJ, USA: Wiley, 2017.
+[16] T. Omar and M. L. Nehdi, “Remote sensing of concrete bridge decks using unmanned aerial vehicle infrared thermography,” Autom. Construction, vol. 83, pp. 360–371, 2017.
+[17] A. Carrio, Y. Lin, S. Saripalli, and P. Campoy, “Obstacle detection system for small UAVs using ADS-B and thermal imaging,” J. Intell. Robot. Syst., vol. 88, no. 2, pp. 583–595, Dec. 2017.
+[18] J. S. Yoon et al., “Thermal-infrared based drivable region detection,” in Proc. IEEE Intell. Vehicles Symp., Jun. 2016, pp. 978–985.
+[19] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image recognition,” in Proc. IEEE Conf. Comput. Vision Pattern Recognit., Jun. 2016, pp. 770–778.
+[20] K. Simonyan and A. Zisserman, “Very deep convolutional networks for large-scale image recognition,” CoRR, vol. abs/1409.1556, 2014.
+[21] C. Szegedy et al., “Going deeper with convolutions,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit., Jun. 2015, pp. 1–9, doi: 10.1109/CVPR.2015.7298594.
+[22] L. Chen, G. Papandreou, I. Kokkinos, K. Murphy, and A. L. Yuille, “Deeplab: Semantic image segmentation with deep convolutional nets, atrous convolution, and fully connected CRFs,” IEEE Trans. Pattern Anal. Mach. Intell., vol. 40, no. 4, pp. 834–848, Apr. 2018.
+[23] C. Hazirbas, L. Ma, C. Domokos, and D. Cremers, “FuseNet: Incorporating depth into semantic segmentation via fusion-based CNN architecture,” in Proc. Asian Conf. Comput. Vision, 2017, pp. 213–228.
+[24] Y. Sun, M. Liu, and M. Q.-H. Meng, “Active perception for foreground segmentation: An RGB-D data-based background modeling method,” IEEE Trans. Autom. Sci. Eng., to be published.
+[25] G. Halmetschlager-Funek, M. Suchi, M. Kampel, and M. Vincze, “An empirical evaluation of ten depth cameras: Bias, precision, lateral noise, different lighting conditions and materials, and multiple sensor setups in indoor environments,” IEEE Robot. Autom. Mag., vol. 26, no. 1, pp. 67–77, Mar. 2019.
+[26] F. Basso, E. Menegatti, and A. Pretto, “Robust intrinsic and extrinsic calibration of RGB-D cameras,” IEEE Trans. Robot., vol. 34, no. 5, pp. 1315– 1332, Oct. 2018.
+[27] Q. Ha, K. Watanabe, T. Karasawa, Y. Ushiku, and T. Harada, “MFNet: Towards real-time semantic segmentation for autonomous vehicles with multi-spectral scenes,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst., Sep. 2017, pp. 5108–5115.
+[28] InfReC R500 Website. [Online]. Available: http://www.infrared. avio.co.jp/en/products/ir-thermo/lineup/r500/. Accessed on: Mar. 1, 2019.
+[29] X. Glorot and Y. Bengio, “Understanding the difﬁculty of training deep feedforward neural networks,” in Proc. 13th Int. Conf. Artif. Intell. Statist., 2010, pp. 249–256.
+[30] G. Montavon, G. Orr, and K.-R. Mller, Neural Networks: Tricks of the Trade, 2nd ed. Berlin, Germany: Springer, 2012.
+

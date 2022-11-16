@@ -1,0 +1,1309 @@
+1
+
+CMX: Cross-Modal Fusion for RGB-X Semantic Segmentation with Transformers
+Huayao Liu∗, Jiaming Zhang∗, Kailun Yang∗†, Xinxin Hu, and Rainer Stiefelhagen
+
+arXiv:2203.04838v2 [cs.CV] 12 Apr 2022
+
+Abstract—Pixel-wise semantic segmentation of RGB images can be advanced by exploiting informative features from supplementary modalities. In this work, we propose CMX, a vision-transformer-based cross-modal fusion framework for RGB-X semantic segmentation. To generalize to different sensing modalities encompassing various supplements and uncertainties, we consider that comprehensive cross-modal interactions should be provided. CMX is built with two streams to extract features from RGB images and the complementary modality (X-modality). In each feature extraction stage, we design a Cross-Modal Feature Rectiﬁcation Module (CM-FRM) to calibrate the feature of the current modality by combining the feature from the other modality, in spatial- and channel-wise dimensions. With rectiﬁed feature pairs, we deploy a Feature Fusion Module (FFM) to mix them for the ﬁnal semantic prediction. FFM is constructed with a cross-attention mechanism, which enables exchange of long-range contexts, enhancing both modalities’ features at a global level. Extensive experiments show that CMX generalizes to diverse multi-modal combinations, achieving state-of-the-art performances on ﬁve RGB-Depth benchmarks, as well as RGB-Thermal and RGB-Polarization datasets. Besides, to investigate the generalizability to dense-sparse data fusion, we establish an RGB-Event semantic segmentation benchmark based on the EventScape dataset, on which CMX sets the new state-of-the-art. Code is available at https://github.com/huaaaliu/RGBX Semantic Segmentation.
+Index Terms—Semantic Segmentation, Scene Parsing, Cross-Modal Fusion, Vision Transformers, Scene Understanding.
+!
+
+1 INTRODUCTION
+
+S EMANTIC segmentation is an essential task in computer vision, which aims to transform an image input into its underlying semantically meaningful regions and enables a pixelwise dense scene understanding for many real-world applications such as automated vehicles, robotics navigation, and augmented reality [1], [2], [3]. Over the last years, pixel-wise semantic segmentation of RGB images has gained an increasing amount of attention and made signiﬁcant progress on segmentation accuracy [4], [5], [6]. Yet, due to the characteristics of RGB images, current deep semantic segmentation models cannot always extract high-quality features under some certain circumstances, e.g., when two objects have similar colors or textures, it is difﬁcult to distinguish them through pure RGB images [7].
+However, different types of sensors can supply RGB images with rich complementary information (see Fig. 1). For example, depth measurement can help identify the boundaries of objects and offer geometric information of dense scene elements [7], [8]. Thermal images facilitate to discern different objects through their speciﬁc infrared imaging [9], [10]. Besides, polarimetric- and event information are advantageous for perception in specularand dynamic real-world scenes [11], [12]. Therefore, multi-modal semantic segmentation models, that can effectively exploit such supplementary information, are often promising to yield better performances than single-modal RGB-based segmentation [13].
+Existing multi-modal semantic segmentation methods can be divided into two categories. The ﬁrst category employs a single
+• H. Liu, J. Zhang, K. Yang, and R. Stiefelhagen are with Institute for Anthropomatics and Robotics, Karlsruhe Institute of Technology, 76131 Karlsruhe, Germany. (E-Mail: huayao.liu@outlook.com, jiaming.zhang@kit.edu, kailun.yang@kit.edu, rainer.stiefelhagen@kit.edu.)
+• X. Hu is with Huawei Technologies Company Ltd., Hangzhou 310000, China. (E-Mail: anheidelonghu@gmail.com.)
+• ∗ indicates equal contribution. • † corresponding author.
+
+Fig. 1: RGB-X semantic segmentation across diverse sensing modality combinations: RGB-D, -T, -P, and -E segmentation.
+network to extract features from RGB images, meanwhile information derived from another speciﬁc modality assist the extraction of RGB features (Fig. 2(a)). This is a typical strategy in RGB-D semantic segmentation with depth-guided operators [14], [15], [16], which are usually elaborately tailored for speciﬁc modalities (e.g., depth), yet hard to be extended to operate with other modality combinations. The second type of approaches [7], [8], [10], [17] deploys two backbones to perform feature extraction from RGBand another modality separately, then fuses the extracted two features into one feature for semantic prediction (Fig. 2(b)). This
+
+2
+
+structure offers the extensibility to replace the other modal-stream with alternative complementary modalities. Nevertheless, most previous methods are predominantly crafted for speciﬁc modalities, e.g., they only focus on tackling RGB-D scene parsing [7], [8], [18] or RGB-T segmentation [10], [17], [19]. While inspiring, they fail to work well on different multi-modal scenarios. For example, according to [10], [19], ACNet [7] and SA-Gate [8], designed for RGB-D data, perform less satisfactorily in RGB-T tasks (see Fig. 3). To enable robust real-world scene understanding, a general and ﬂexible architecture suitable for a diverse mix of sensor data combinations enhancing RGB segmentation (Fig. 1), i.e. RGB-X semantic segmentation, is desirable and advantageous. It not only saves research and engineering efforts on optimizing architectures for a speciﬁc modality combination scenario, but also makes it possible that a system equipped with multi-modal sensors can readily leverage new sensors when they become available [20], [21], which is conductive to robust scene perception. However, such universal modality-agnostic RGB-X semantic segmentation architectures are rarely investigated in the state of the art.
+Recently, with the emergence of powerful non-local feature extraction backbones like vision transformers [22], [23], [24], the performances of different dense prediction tasks, e.g., semantic segmentation, have been signiﬁcantly advanced. Multi-modal data contain patterns that require modeling dependencies across modalities. Transformers handle inputs as sequences and have the ability to acquire long-range correlations [22], [25], offering the possibility for a uniﬁed framework for diverse multi-modal tasks. However, existing multi-modal fusion modules [7], [11], [17] are mostly architected for Convolutional Neural Networks (CNNs) that fail in establishing long-range contextual dependencies in pixel-rich image data, which prove essential for accurate semantic segmentation [26], [27]. Moreover, multi-modal data often encompass a great deal of noisy measurements in different sensing modalities, e.g., low-quality distance estimation regions caused by limited effective depth ranges [8] and uncertainties resulted from various event representations [12]. It remains unclear whether potential improvements on RGB-X semantic segmentation can be materialized via vision transformers. Crucially, while some previous works [7], [8] use a simple global multi-modal interaction strategy, it does not generalize well across different sensing data combinations [10]. We hypothesize that for RGB-X semantic segmentation with various supplements and uncertainties, comprehensive cross-modal interactions should be provided, to fully exploit the potential of cross-modal complementary features.
+In light of these challenges, we propose CMX, a cross-modal fusion framework for RGB-X semantic segmentation. CMX uses RGB image and another modal image as inputs, with the aim of achieving better segmentation than using only RGB image. To extract bi-modal features, our vision-transformer-based model is built as a two-stream architecture (RGB- and X-modal stream). Two speciﬁc modules are designed for feature interaction and feature fusion in between. The ﬁrst module, Cross-Modal Feature Rectiﬁcation Module (CM-FRM), is put forward to calibrate the bi-modal features by leveraging their spatial- and channel-wise correlations, which enables both streams to focus more on the complementary informative cues from each other and mitigates the effects of uncertainties and noisy measurements from different modalities. Such a feature rectiﬁcation tackles varying noises and uncertainties in diverse modalities. It enables better multi-modal feature extraction and interaction. The second module, Feature Fusion Module (FFM), is constructed in two stages, which merges
+
+both rectiﬁed features from RGB- and X-modality into a single feature for the semantic prediction. Motivated by the large receptive ﬁelds obtained via self-attention [25] of vision transformers, a cross-attention mechanism is devised in the ﬁrst stage of FFM for realizing a cross-modal global reasoning. In the second stage, a mixed channel embedding is applied to produce enhanced output features. Thereby, our introduced comprehensive interactions lie in multiple levels (see Fig. 2(c)), including channel- and spatialwise rectiﬁcation from the feature map perspective, as well as cross-attention from the sequence-to-sequence perspective, which are critical for generalization across modality combinations.
+To verify our uniﬁcation proposal, for the ﬁrst time, we consider and assess CMX in four multi-modal semantic segmentation tasks. The proposed method achieves state-of-the-art performances on multiple RGB-Depth datasets [28], [29], [30], [31], [32], as well as RGB-Thermal [9] and RGB-Polarization [11] benchmarks. In particular, CMX attains top mIoU of 56.9% on NYU Depth V2 (RGB-D) [28], 59.7% on MFNet (RGB-T) [9], and 92.6% on ZJU-RGB-P [11] datasets. Our universal approach clearly outperforms specialized architectures (Fig. 3). Further, on popular challenging benchmarks [9], [28], CMX leads to ∼5.0% mIoU gains compared to RGB-only segmentation. Aside from these combinations of dense image data, we study dense-sparse fusion using dense RGB- and sparse event-based data (see Fig. 1), which encodes changes of intensity of each pixel asynchronously and thereby is constructive to capturing motion information [12]. However, an RGB-Event parsing benchmark is not available in the community. Tackling this shortage, we establish an RGBEvent semantic segmentation benchmark based on the EventScape dataset [33], where our RGB-X model further shines, setting the new state-of-the-art among >10 benchmarked models. Meanwhile, the proposed CMX solution is proved to be effective for different CNN- and transformer backbone architectures. Moreover, our comprehensive set of investigations on representations of polarization- and event-based data indicates the path to follow and the sweet spot for reaching robust multi-modal semantic segmentation, trumping original representation methods [11], [33].
+On a glance, we deliver the following contributions: • For the ﬁrst time, explore RGB-X semantic segmentation in
+four multi-modal sensing data combinations. • Rethink cross-modal fusion from a generalization perspective
+and consider that comprehensive cross-modal interactions should be provided to generalize across diverse modalities. • Propose an RGB-X semantic segmentation framework CMX with cross-modal feature rectiﬁcation and feature fusion modules, intertwining cross-attention and mixed channel embedding for enhanced global reasoning with transformers. • Investigate representations of polarimetric- and event data, indicating the optimal path to follow for reaching robust multi-modal semantic segmentation. • Establish an RGB-Event semantic segmentation benchmark to assess dense-sparse data fusion. Our general method achieves state-of-the-art performances on eight datasets, covering ﬁve RGB-D benchmarks, as well as RGB-T, RGB-P, and RGB-E sensing data combinations.
+2 RELATED WORK
+2.1 Transformer-driven Semantic Segmentation
+Since Fully Convolutional Networks (FCNs) [34] address dense semantic segmentation in an end-to-end per-pixel classiﬁcation
+
+3
+
+feature-wise feature-wise sequence-wise
+
+a) Input Fusion
+
+b) Feature Fusion
+
+c) Interactive Fusion
+
+Fig. 2: Comparison of different fusion methods. a) Input fusion merges the input with modality-speciﬁc operations [15], [16]. b) Feature fusion uses a global feature-wise strategy via channel attention [7], [8]. c) In our cross-modal fusion framework for RGB-X semantic segmentation with transformers, comprehensive interactions are considered and provided, including channel- and spatial-wise cross-modal feature rectiﬁcation from the feature map perspective, as well as cross-attention from the sequence-to-sequence perspective.
+
+95.0% 85.0% 75.0% 65.0% 55.0% 45.0% 35.0%
+
+ACNet SA-Gate
+CMX ACNet SA-Gate
+CMX EAFNet NLFNet
+CMX ISSAFE SA-Gate
+CMX
+
+RGB-D
+
+RGB-T
+
+RGB-P
+
+RGB-E
+
+Fig. 3: Performance comparison between representative specialized architectures and our proposed universal CMX architecture on different RGB-X semantic segmentation benchmarks. For example, SA-Gate [8] designed for RGB-D data (e.g., on NYU Depth V2 dataset [28]), is less effective on RGB-T or RGB-E tasks. CMX, for the ﬁrst time, outperforms state-of-the-art specialized methods on four studied segmentation tasks on multiple datasets.
+
+boundary cues [52], [53], [54], and appending various attention modules [55], [56], [57], [58], [59] to boost the performance.
+Recently, SETR [27] and Segmenter [60] directly adopt vision transformers [22], [23] as the backbone, which capture global context from very early layers. SegFormer [61], PVT [62], Swin [24], and UniFormer [63] create hierarchical structures to make use of multi-resolution features. Leveraging the advance of DETR [64], MaX-DeepLab [65] and MaskFormer [66] view image segmentation from the perspective of mask classiﬁcation. Following this trend, various architectures of dense prediction transformers [67], [68], [69], [70], [71] and semantic segmentation transformers [72], [73], [74], [75], [76] emerge in the ﬁeld. While these approaches have achieved high segmentation performance, most of them focus on using RGB images and suffer when RGB images cannot provide sufﬁcient information in real-world scenes, e.g., under low-illumination conditions or in high-dynamic areas. In this work, we tackle multi-modal semantic segmentation to take advantage of complementary information offered by other modalities such as depth, thermal, polarization, and event-based data for boosting RGB segmentation.
+
+fashion, this ﬁeld has progressed exponentially. A main cluster of subsequent approaches augments the FCN structure by enlarging receptive ﬁelds which are vital for accurate segmentation [35], [36], [37]. Pyramid-, strip-, and atrous spatial pyramid pooling are designed to harvest multi-scale feature representations [4], [38], [39]. Inspired by the non-local block [40], self-attention in transformers [25] has been used to establish long-range dependencies by DANet [26] and OCNet [41]. Attaching importance to efﬁciency, CCNet [42] puts forward criss-cross attention, whereas CANet [43] exploits a covariance matrix when encoding the dependencies. CTNet [44] jointly explores spatial- and semantic dependency with mutual communications. Additional FCNbased methods improve dense semantic segmentation by reﬁning context priors [45], [46], [47], [48], [49], [50], [51], enhancing
+
+2.2 Multi-modal Semantic Segmentation
+While previous works reach high performance on standard RGBbased semantic segmentation benchmarks, in challenging realworld conditions, it is desirable to involve multi-modality sensing for a reliable and comprehensive scene understanding [13]. RGBDepth [77], [78], [79], [80], [81] and RGB-Thermal [19], [82], [83], [84], [85] semantic segmentation are broadly investigated. Polarimetric optical cues [86], [87], [88] and event-driven priors [12], [89], [90] are often intertwined for robust perception under adverse conditions. In automated driving, optical ﬂow [91] and LiDAR data [92] are also incorporated for enhanced semantic road scene understanding. However, most of these works only address a single sensing-modality combination scenario. In this work, we aim for a general and ﬂexible approach, which is generalizable to a diverse mix of multi-modal combinations.
+
+4
+
+For multi-modal semantic segmentation, there are two dominant strategies. The ﬁrst mainstream paradigm models crossmodal complementary information into layer- or operator designs [14], [15], [16], [93], [94]. For example, a shape-aware convolution layer is introduced in [15] for embedding depth features, while a spatial-guided convolution operator is proposed in [16] to adapt receptive ﬁelds according to geometric patterns for RGB-D semantic segmentation. Additional methods dynamically exchange channels and shift pixels to enable implicit cross-modal feature fusion [95], [96]. While these works verify that multimodal features can be learned within a shared network, they are carefully designed for some speciﬁc modality combinations, in particular RGB-D semantic segmentation, which are hard to be applied into other modalities. Moreover, there are multi-task frameworks [97], [98], [99], [100], [101] that facilitate inter-task feature propagation for RGB-D scene understanding, but they rely on supervision from other tasks for joint learning.
+The second paradigm dedicates to developing fusion schemes to bridge two parallel modality streams. ACNet [7] proposes attention complementary modules to exploit high-quality informative features for RGB-D semantic segmentation based on channel attention [102], whereas ABMDRNet [10] suggests to reduce the modality differences between RGB- and thermal features before selectively extracting discriminative cues for RGB-T fusion. For RGB-P segmentation, Xiang et al. [11] connect RGB- and polarization branches via efﬁcient channel attention bridges. For RGBE parsing, Zhang et al. [12] explore sparse-to-dense and denseto-sparse fusion ﬂows, verifying the importance of event-driven dynamic context for accident scene segmentation. In this research, we also advocate this paradigm but unlike previous works, we address RGB-X semantic segmentation with a uniﬁed framework, for generalizing to diverse sensing modality combinations.
+While some previous works use a simple global channelwise interaction strategy, it does not work well across different sensing data. For example, ACNet [7] and SA-Gate [8], designed for RGB-D segmentation, perform less satisfactorily in RGB-T scene parsing [10]. In contrast, we hypothesize that comprehensive cross-modal interactions should be provided for RGB-X semantic segmentation with various supplements and uncertainties, to fully unleash the potential of cross-modal complementary features. Besides, most of the previous works still adopt CNNs as the backbone without considering that long-range dependency information could be informative for cross-modal fusion. We put forward a framework with transformers which considers global dependencies already in its architecture design. Concurrent works also use transformers for multi-modal action recognition [103], object detection [104], [105], [106], and end-to-end self-driving [107]. Differing from existing works, we perform fusion on different levels with cross-modal feature rectiﬁcation and cross-attentional exchanging for enhanced dense semantic prediction.
+3 PROPOSED FRAMEWORK: CMX
+We ﬁrst introduce the overview of our proposed CMX framework for RGB-X semantic segmentation in Sec. 3.1. In Sec. 3.2 and Sec. 3.3, we elaborate the proposed CM-FFM and FFM modules for cross-modal feature rectiﬁcation and fusion. In Sec. 3.4, we detail the used multi-modal data representations for investigating and reaching robust RGB-X semantic segmentation.
+
+3.1 Framework Overview
+We present CMX, a cross-modal fusion framework for RGB-X semantic segmentation. The overview of CMX is shown in Fig. 4. We use two parallel backbones to extract features from RGB- and X-modal inputs, which can be RGB-depth, -thermal, -polarization, -event data, etc. Multi-modal data often contain a great amount of noises in different modalities, e.g., low-quality depth regions caused by limited effective distance measuring ranges [8] and uncertainties resulted from various event representations [12].
+While features from different modalities have their speciﬁc noisy measurements, the feature of another modality has the potential for rectifying and calibrating this noisy information. Therefore, we design a Cross-Modal Feature Rectiﬁcation Module (CM-FRM) to rectify features coming from both modalities. They will be assembled between two adjacent stages of backbones. In this way, both rectiﬁed features will be sent to the next stage to further deepen and improve the feature extraction. Furthermore, we design a two-stage Feature Fusion Module (FFM) to fuse features belonging to the same level into a single feature map. Then, a decoder is used to transform the feature maps of different levels into the ﬁnal semantic map. With the aim to harvest diverse supplements and tackle varying uncertainties, our introduced comprehensive interactions lie in multiple levels, including channeland spatial-wise rectiﬁcation from the feature map perspective in CM-FRM, and cross-attention from the sequence-to-sequence perspective in FFM, which are crucial for generalizing across sensing data combinations and reaching robust RGB-X semantic segmentation. The backbones and the decoder can be replaced by other common methods. In Sec. 3.2 and Sec. 3.3, we detail the design of CM-FRM and FFM, respectively. In the following descriptions, we use X to refer to the supplementary modality, which can be depth-, thermal-, polarization-, event data, etc.
+
+3.2 Cross-Modal Feature Rectiﬁcation
+As analyzed above, the information originating from different sensing modalities are usually complementary [7], [8] but contain noisy measurements. The noisy information can be ﬁltered and calibrated by using features coming from another modality. To this purpose, we propose a novel Cross-Modal Feature Rectiﬁcation Module (CM-FRM) to perform feature rectiﬁcation between parallel streams at each stage during feature extraction. For tackling various noises and uncertainties in diverse modalities, CM-FRM processes the input features in two different dimensions, including channel-wise and spatial-wise feature rectiﬁcation, which together offers a holistic calibration, enabling better multi-modal feature extraction and interaction. Channel-wise feature rectiﬁcation. We embed both modalities’ features RGBin ∈ RH×W×C and Xin ∈ RH×W×C along the spatial axis into two attention vectors WRCGB ∈ RC and WXC ∈ RC. Different from previous channel-wise attention methods [8], [17], [108], which use global average pooling to obtain the attention vector, we apply both global max pooling and global average pooling to RGBin and Xin along the channel dimension to remain more information. We concatenate the four resulted vectors, having Y ∈ R4C. Then, an MLP is applied, followed with a sigmoid function to obtain the weights WC ∈ R2C from Y, which will be split into WRCGB and WXC:
+
+WRCGB, WXC = Fsplit σ Fmlp(Y) ,
+
+(1)
+
+5
+
+Fig. 4: a) Overview of CMX for RGB-X semantic segmentation. The inputs are an RGB image and another modality data (e.g., depth, thermal, polarization, or event). b) Detailed architecture of Cross-Modal Feature Rectiﬁcation Module (CM-FRM), with colored arrows to represent information ﬂows of the two modalities. c) Detailed architecture of two-stage Feature Fusion Module (FFM).
+
+where σ denotes the sigmoid function. The channel-wise rectiﬁcation is then operated as:
+
+RGBCrec = WXC Xin, XCrec = WRCGB RGBin,
+
+(2)
+
+where denotes channel-wise multiplication.
+Spatial-wise feature rectiﬁcation. As the aforementioned
+channel-wise feature rectiﬁcation module concentrates on learning
+global weights for a global calibration, we further introduce a
+spatial-wise feature rectiﬁcation for calibrating local information. The two modalities’ inputs RGBin and Xin will be concatenated and embedded into two spatial weight maps: WRS GB ∈ RH×W and WXS ∈ RH×W. The embedding operation has two 1×1 convolution layers assembled with a RELU function. Afterwards,
+a sigmoid function is applied to obtain the embedded feature map F ∈ RH×W×2, which is further split into two weight maps. The process to obtain the spatial weight maps is formulated as:
+
+F = Conv1×1 RELU Conv1×1(RGBin Xin) , (3)
+
+WRS GB, WXS = Fsplit σ(F) .
+
+(4)
+
+Similar to the channel-wise rectiﬁcation, the spatial-wise rectiﬁcation is formulated as:
+
+RGBSrec = WXS ∗ Xin, XSrec = WRS GB ∗ RGBin,
+
+(5)
+
+where ∗ denotes spatial-wise multiplication. The whole rectiﬁed feature for both modalities RGBout and
+Xout is organized as:
+
+RGBout = RGBin + λCRGBCrec + λSRGBSrec, Xout = Xin + λCXCrec + λSXSrec.
+
+(6)
+
+λC and λS are two hyperparameters and we set them both as 0.5. RGBout and Xout are the rectiﬁed features after the comprehensive calibration, which will be sent into the next stage
+for feature fusion.
+
+3.3 Feature Fusion
+After obtaining the feature maps at each layer, we build a twostage Feature Fusion Module (FFM) to enhance the information interaction and merge the features from two modalities into a single feature map. As shown in Fig. 4(c), in stage 1, the two branches are still maintained, and a cross-attention mechanism
+
+6
+
+is designed to globally exchange information between the two
+branches. Then, we concatenate the outputs of these two branches. In stage 2, this concatenated feature is transformed into the
+original size via a mixed channel embedding.
+Information exchange stage. At this stage, the two modalities’
+features will exchange their information via a symmetric dual-path
+structure. For brevity, we take the X-modal path for illustration. We ﬁrst ﬂatten the input feature with size RH×W ×C to RN×C , where N =H×W . Afterwards, a linear embedding is used to generate two vectors with the same size RN×Ci , which we call residual vector Xres and interactive vector Xinter. We further put
+forward an efﬁcient cross-attention mechanism applied to these
+two interactive vectors from different modal paths, which will
+carry out sufﬁcient information exchange across modalities. This
+offers complementary interactions from the sequence-to-sequence
+perspective beyond the rectiﬁcation-based interactions from the
+feature map perspective in CM-FRM.
+Our cross-attention mechanism for enhancing cross-modal
+feature fusion is based on the traditional self-attention [25]. The
+original self-attention operation encodes the input vectors into Query Q, Key K, and Value V. The global attention map is calculated via a matrix multiplication QKT, which has a size of RN×N and causes a high memory occupation. In contrast, [109] uses a global context vector G = KTV with a size RChead×Chead and the attention result is calculated by QG. We ﬂexibly adopt the reformulation and develop our multi-head
+cross-attention based on this efﬁcient self-attention mechanism. Speciﬁcally, the interactive vectors will be embedded into Key K and Value V for each head, and both sizes of them are RN×Chead . The output is obtained by multiplying the interactive vector and
+the context vector from the other modality path, namely a cross-
+attention process, and it is depicted in the following equations:
+
+GRGB = KTRGBVRGB, GX = KTXVX,
+
+(7)
+
+URGB = XiRnGteBr Softmax(GX), UX = XiXnter Softmax(GRGB).
+
+(8)
+
+Note that G denotes the global context vector, while U indicates
+the attended result. To realize the attention from different repre-
+sentation subspaces, we remain the multi-head mechanism, where
+the number of heads matches the transformer backbone. Then, the attended result vector U and the residual vector Xres are
+concatenated. Finally, we apply a second linear embedding and resize the feature to RH×W ×C . Fusion stage. In the second stage of FFM, precisely the fusion
+stage, we use a simple channel embedding to merge the two paths’ features, which is realized via 1×1 convolution layers. Further, we
+consider that during such a channel-wise fusion, the information
+of surrounding areas should also be exploited for robust RGB-
+X segmentation. Thereby, inspired by Mix-FFN in [61] and
+ConvMLP [110], we add one more depth-wise convolution layer DW Conv3×3 to realize a skip-connected structure. In this way, the merged features with the size RH×W ×2C are fused into the ﬁnal output with the size of RH×W ×C for feature decoding.
+
+3.4 Multi-modal Data Representations
+To investigate and reach robust RGB-X semantic segmentation, the multi-modal data representations are critical. We study
+
+with four modality combinations, including RGB-Depth, RGBThermal, RGB-Polarization, and RGB-Event semantic segmentation. Now we elaborate the multi-modal data representations we use for inputting to our symmetric dual-path CMX architecture. RGB-Depth. Depth images naturally offer range, position, and contour information. The fusion of RGB information and depth information is promising to better separate objects with indistinguishable colors and textures at different spatial locations. We encode the raw depth images into HHA images as the depth modality input. This algorithm is proposed by [111], which has been proven to have a better use of depth information. Precisely, HHA offers a representation of geometric properties at each pixel, including horizontal disparity, height above ground, and the angle the pixel’s local surface makes with the inferred gravity direction, emphasizing complementary discontinuities of RGB images. RGB-Thermal. At night or in places with insufﬁcient light, objects and backgrounds have similar color information and are difﬁcult to distinguish. Thermal images provide infrared characteristics of objects, which are potential to improve objects with thermal properties such as people. We directly use the infrared thermal image and copy the single-channel thermal image input 3 times to match the backbone input. RGB-Polarization. High-reﬂectivity objects such as glasses and cars have RGB information that are easily confused with surroundings. Polarization cameras record the optical polarimetric information when polarized reﬂection occurs, which offer complementary information serviceable for better segmenting and understanding scenes with specular surfaces. The polarization sensor equipped with a polarization mask layer with four different polarization directions [11] and thereby each captured image set consists of four pixel-aligned images at different polarization angles [I0◦ , I45◦ , I90◦ , I135◦ ], where Iangle denotes the image recorded at the corresponding angle.
+We investigate representations of polarization data, including the Degree of Linear Polarization (DoLP ) and the Angle of Linear Polarization (AoLP ), which are key polarimetric properties characterizing light polarization patterns [11]. They are derived by Stokes vectors S = [S0, S1, S2, S3] that describe the polarization state of light. Precisely, S0 represents the total light intensity, S1 and S2 denote the ratio of 0◦ and 45◦ linear polarization over its perpendicular polarized portion, and S3 stands for the circular polarization power which is not involved in our work. The Stokes vectors S0, S1, S2 can be calculated from image intensity measurements [I0◦ , I45◦ , I90◦ , I135◦ ] via:
+
+S0 = I0◦ + I90◦ = I45◦ + I135◦ ,
+
+S1 = I0◦ − I90◦ ,
+
+(9)
+
+S2 = I45◦ − I135◦ .
+
+Then, DoLP and AoLP are formally computed as:
+
+DoLP = S12 + S22 ,
+
+(10)
+
+S0
+
+1 AoLP = arctan
+
+S1
+
+.
+
+(11)
+
+2
+
+S2
+
+In our experiments, we further study with monochromatic and trichromatic polarization cues, coupled with RGB images in multi-modal RGB-P semantic segmentation. For monochromatic representation used in previous works [11], [112], we obtain it from monochromatic intensity measurements and convert it to 3-channel input by copying the single-channel information.
+
+7
+
+(a) Direct
+
+(b) Ours
+
+Fig. 5: Comparison between event representations.
+
+For trichromatic polarization representation in either DoLP or AoLP , we compute separately for their respective RGB channels. RGB-Event. Event data provide multiple advantages such high dynamic range, high temporal resolution, and not being inﬂuenced by motion blur [89], which are critical in dynamic scenes with a great amount of motion information such as road-driving environments [12], [90]. Due to the sparse nature of event data, the raw events require a pre-processing to obtain a representation to achieve multi-modal fusion. Events are typically converted into a tensor with the same spatial dimension as the corresponding RGB image. For example, a set of raw events in a time window ∆T =tN −t1 is embedded into a voxel grid with spatial dimensions H×W and time bins B, where t1 and tN are the startand the end time stamp of the raw events. For example, event data in [33] is directly converted to B=3. In this work, events are ﬁrst embedded into a voxel grid with a higher time resolution, which we set the upscale size of the event bin as 6. Then, every 6 adjacent panels are superimposed to obtain a tensor with ﬁne-grained event embedding. A comparison between the direct representation in [33] and our event representation is visualized in Fig. 5, in which our event representation is more ﬁne-grained in each event panel. Apart from B=3, we further investigate different settings of event time bin B={1, 5, 10, 15, 20, 30} in our method for reaching robust RGB-E semantic segmentation.
+4 EXPERIMENT DATASETS AND SETUPS
+In this section, we describe the multi-modal datasets and implementation details of our model in experiments.
+4.1 Datasets
+We use multiple RGB-Depth semantic segmentation datases, as well as datasets of RGB-Thermal, RGB-Polarization, RGB-Event modality combinations for verifying our proposed CMX model. NYU Depth V2 dataset. NYU Depth V2 dataset [28] contains 1449 RGB-D images with the size 640×480, divided into 795 training images and 654 testing images with annotations on 40 semantic categories. SUN-RGBD dataset. SUN-RGBD dataset [29] consists of 10335 RGB-D images, including 5285 for training and 5050 for testing, annotated in 37 classes. Following [8], [113], we randomly crop and resize the input to 480×480. Stanford2D3D dataset. Stanford2D3D dataset [30] is comprised of 70496 RGB-D images with 13 object categories. Following [14], [15], areas 1, 2, 3, 4, and 6 are used for training and area 5 is for testing. The input image is resized to 480×480. ScanNetV2 dataset. ScanNetV2 [31] is a large-scale benchmark for indoor holistic scene understanding. For its 2D semantic label benchmark, it provides 19466 RGB-D samples for training, 5436 for validation, and 2135 frames for testing. The semantic annotations are created on 20 classes. The RGB images are captured at a
+
+resolution of 1296×968 and depth at 640×480 pixels. During training, the RGB images are re-scaled to 640×480 to keep the same size as the depth images. During testing, the semantic predictions are resized to the full resolution of 1296×968. Cityscapes dataset. Cityscapes [32] is an outdoor RGB-D dataset that focuses on semantic understanding of urban road-driving street scenes. It is divided into 2975/500/1525 images in the training/validation/testing splits, both with ﬁnely annotated dense labels on 19 classes. The image scenes cover 50 different cities with a full resolution of 2048×1024. RGB-T MFNet dataset. MFNet [9] is a multi-spectral RGBThermal image dataset, which consists of 1569 images annotated in 8 classes at the resolution of 640×480. 820 images are captured during the day and the other 749 are collected at night. The training set contains 50% of the daytime- and 50% of the nighttime images, while the validation- and test set respectively contains 25% of the daytime- and 25% of the nighttime images. RGB-P ZJU dataset. ZJU-RGB-P [11] is an RGB-Polarization dataset collected by an integrated multi-modal vision sensor designed for automated driving [20] on complex campus street scenes. It is composed of 344 images for training and 50 images for evaluation, both labeled with 8 semantic classes at the pixel level. The input image is resized to 612×512. RGB-E EventScape dataset. While event-based data offer various beneﬁts for perception in dynamic scenes [12], [90], a largescale multi-modal RGB-Event semantic segmentation benchmark is not available in the ﬁeld. Addressing this gap, we create an RGB-E multi-modal semantic segmentation benchmark1 based on the EventScape dataset [33], which is originally designed for depth estimation. To maintain data diversity from the video sequences of the EventScape dataset generated from the CARLA simulator [114], we select one frame from every 30 frames. Thus, there are 4077 and 749 images in the training- and evaluation set, respectively. The images have a 512×256 resolution and are annotated with 12 semantic classes.
+4.2 Implementation Details
+During training on all datasets, data augmentation is performed by random ﬂipping and scaling with random scales [0.5, 1.75]. We take Mix Transformer encoder (MiT) pretrained on ImageNet [115] as the backbone and MLP-decoder with an embedding dimension of 512 unless speciﬁed, both introduced in SegFormer [61]. We select AdamW optimizer [116] with weight decay 0.01. The original learning rate is set as 6e−5 and we employ a poly learning rate schedule. We use cross-entropy as the loss function. When reporting multi-scale testing results on NYU Depth V2 and SUN RGB-D, we use multiple scales ({0.75, 1, 1.25}) with horizontal ﬂipping. We use mean Intersection over Union (mIoU) averaged across semantic classes as the primary evaluation metric to measure the segmentation performance. More speciﬁc settings for different datasets are described in detail in the appendix.
+5 EXPERIMENT RESULTS AND ANALYSES
+In this section, we present experimental results for verifying the effectiveness of our proposed CMX approach for RGB-X semantic segmentation. In Sec. 5.1, we show the performances of our model on multiple indoor and outdoor RGB-Depth benchmarks, compared with state-of-the-art methods. In Sec. 5.2, we analyze
+1. https://paperswithcode.com/sota/semantic-segmentation-on-eventscape
+
+TABLE 1: Results on NYU Depth V2. ∗ denotes multi-scale test.
+
+8
+TABLE 3: Results on the Stanford2D3D dataset [30].
+
+Method
+3DGNN [117] Kong et al. [118] LS-DeconvNet [119] CFN [120] ACNet [7] RDF-101 [121] SGNet [16] ShapeConv [15] NANet [113] SA-Gate [8]
+CMX (SegFormer-B2) CMX (SegFormer-B2)∗ CMX (SegFormer-B4) CMX (SegFormer-B4)∗ CMX (SegFormer-B5) CMX (SegFormer-B5)∗
+
+mIoU (%) 43.1 44.5 45.9 47.7 48.3 49.1 51.1 51.3 52.3 52.4 54.1 54.4 56.0 56.3 56.8 56.9
+
+Pixel Acc. (%) -
+72.1 71.9
+75.6 76.8 76.4 77.9 77.9 78.7 79.9 79.6 79.9 79.9 80.1
+
+TABLE 2: Results on SUN-RGBD. ∗ denotes multi-scale test.
+
+Method
+3DGNN [117] RDF-152 [121] CFN [120] D-CNN [14] ACNet [7] TCD [122] SGNet [16] SA-Gate [8] NANet [113] ShapeConv [15]
+CMX (SegFormer-B2)∗ CMX (SegFormer-B4)∗ CMX (SegFormer-B5)∗
+
+mIoU (%)
+45.9 47.7 48.1 42.0 48.1 49.5 48.6 49.4 48.8 48.6
+49.7 52.1 52.4
+
+Pixel Acc. (%)
+81.5
+83.1 82.0 82.5 82.3 82.2
+82.8 83.5 83.8
+
+the RGB-Thermal segmentation performance for robust daytimeand nighttime semantic perception. In Sec. 5.3 and Sec. 5.4, we study the generalization of CMX to RGB-Polarization and RGB-Event modality combinations and representations of these multi-modal data. We conduct a comprehensive variety of ablation studies in Sec. 5.5 to conﬁrm the effects of different components in our solution. Finally, we perform efﬁciency- and qualitative analysis in Sec. 5.6 and Sec. 5.7.
+
+Method
+Depth-aware CNN [14] MMAF-Net-152 [123] ShapeConv-101 [15]
+CMX (SegFormer-B2) CMX (SegFormer-B4)
+
+mIoU (%)
+39.5 52.9 60.6
+61.2 62.1
+
+Pixel Acc. (%)
+65.4 76.5 82.7
+82.3 82.6
+
+TABLE 4: Results on the ScanNetV2 test set [31]. Results are obtained from the ScanNetV2 benchmark leaderboard.
+
+Method
+PSPNet [38] AdapNet++ [125]
+3DMV (2d-proj) [126] FuseNet [127] SSMA [125] GRBNet [80] MCA-Net [128] DMMF [129]
+CMX (Ours)
+
+Modal
+RGB RGB
+RGB-D RGB-D RGB-D RGB-D RGB-D RGB-D
+RGB-D
+
+mIoU (%)
+47.5 50.3
+49.8 53.5 57.7 59.2 59.5 59.7
+61.3
+
+TABLE 5: Results on the Cityscapes val set in full resolution.
+
+Method SwiftNet [130] ESANet [2] GSCNN [52] CCNet [42] DANet [26] ACFNet [131] SegFormer [61] SegFormer [61] RFNet [1] PADNet [132] Kong et al. [118] ESANet [2] SA-Gate [8] SA-Gate [8] AsymFusion [96] SSMA [125] CMX (SegFormer-B2) CMX (SegFormer-B4)
+
+Modal RGB RGB RGB RGB RGB RGB RGB RGB RGB-D RGB-D RGB-D RGB-D RGB-D RGB-D RGB-D RGB-D RGB-D RGB-D
+
+Backbone ResNet-18 ResNet-50 WideResNet-38 ResNet-101 ResNet-101 ResNet-101
+MiT-B2 MiT-B4 ResNet-18 ResNet-50 ResNet-101 ResNet-50 ResNet-50 ResNet-101 Xception65 ResNet-50 MiT-B2 MiT-B4
+
+mIoU (%) 70.4 79.2 80.8 81.3 81.5 81.5 81.0 82.3 72.5 76.1 79.1 80.0 80.7 81.7 82.1 82.2 81.6 82.6
+
+5.1 Results on RGB-Depth Datasets
+We ﬁrst assess the performance of our method on different RGB-D semantic segmentation datasets. NYU Depth V2. The results on the NYU Depth V2 dataset are shown in Table 1. The performances of our model using different sizes of backbones are reported. It can be easily seen that our approach achieves leading scores. The proposed method with SegFormer-B2 already exceeds previous methods, attaining 54.4% in mIoU. Our CMX models based on SegFormer-B4 and -B5 further dramatically improve the mIoU to 56.3% and 56.9%, clearly standing out in front of all state-of-the-art approaches. The best CMX model even reaches superior results than recent strong pretraining-based methods [21], [101] like Omnivore [21] that uses images, videos, and single-view 3D data for supervision. SUN-RGBD. The segmentation results of CMX on the SUNRGBD dataset are shown in Table 2. We experiment by training and testing backbones of two different sizes and our method achieves leading performances. Our interactive cross-modal fusion
+
+approach exceeds previous works that either use input fusion depicted in Fig. 2(a) including SGNet [16] and ShapeConv [15], or build on feature fusion illustrated in Fig. 2(b) including ACNet [7] and SA-Gate [8]. In particular, with SegFormer-B4 and -B5, our proposed method elevates the state-of-the-art to more than 52.0% in mIoU. CMX is also better than multi-task methods like PAP [97] and TET [100]. As the model with SegFormer-B5 comes with much larger computational complexity and relatively small improvements, which will be assessed in Sec. 5.6, in the following experiments we mainly use SegFormer-B2 and -B4 backbones. Stanford2D3D. As shown in Table 3, on the large-scale Stanford2D3D dataset, our proposed solution also achieves stateof-the-art mIoU scores. CMX based on SegFormer-B2 already surpasses the previous best ShapeConv [15] based on ResNet101 [124] in mIoU and our model based on SegFormer-B4 further improves the accuracy values, reaching mIoU of 62.1%. The results demonstrate the effectiveness and learning capacity of our approach on such a large RGB-D dataset.
+
+9
+TABLE 6: Per-class results on the MFNet dataset [9] for RGB-Thermal semantic segmentation.
+
+Method
+
+Modal Unlabeled Car Person Bike Curve Car Stop Guardrail Color Cone Bump mIoU
+
+ERFNet [133]
+
+RGB
+
+96.7
+
+67.1 56.2 34.3 30.6
+
+9.4
+
+0.0
+
+DANet [26]
+
+RGB
+
+96.3
+
+71.3 48.1 51.8 30.2
+
+18.2
+
+0.7
+
+SegNet [5]
+
+RGB
+
+96.7
+
+65.3 55.7 51.1 38.4
+
+10.0
+
+0.0
+
+CCNet [42]
+
+RGB
+
+97.7
+
+79.5 52.7 56.2 32.2
+
+29.0
+
+1.2
+
+UNet [134]
+
+RGB
+
+96.9
+
+66.2 60.5 46.2 41.6
+
+17.9
+
+1.8
+
+PSPNet [38]
+
+RGB
+
+96.8
+
+74.8 61.3 50.2 38.4
+
+15.8
+
+0.0
+
+APCNet [135]
+
+RGB
+
+97.4
+
+83.0 51.6 58.7 27.0
+
+30.3
+
+11.8
+
+DUC [136]
+
+RGB
+
+97.7
+
+82.5 69.4 58.9 40.1
+
+20.9
+
+3.4
+
+HRNet [6]
+
+RGB
+
+98.0
+
+86.9 67.3 59.2 35.3
+
+23.1
+
+1.7
+
+SegFormer-B2 [61]
+
+RGB
+
+97.9
+
+87.4 62.8 63.2 31.7
+
+25.6
+
+9.8
+
+SegFormer-B4 [61]
+
+RGB
+
+98.0
+
+88.9 64.0 62.8 38.1
+
+25.9
+
+6.9
+
+MFNet [9]
+
+RGB-T
+
+96.9
+
+65.9 58.9 42.9 29.9
+
+9.9
+
+0.0
+
+SA-Gate [8]
+
+RGB-T
+
+96.8
+
+73.8 59.2 51.3 38.4
+
+19.3
+
+0.0
+
+Depth-aware CNN [14] RGB-T
+
+96.9
+
+77.0 53.4 56.5 30.9
+
+29.3
+
+8.5
+
+ACNet [7]
+
+RGB-T
+
+96.7
+
+79.4 64.7 52.7 32.9
+
+28.4
+
+0.8
+
+PSTNet [137]
+
+RGB-T
+
+97.0
+
+76.8 52.6 55.3 29.6
+
+25.1
+
+15.1
+
+RTFNet [82]
+
+RGB-T
+
+98.5
+
+87.4 70.3 62.7 45.3
+
+29.8
+
+0.0
+
+FuseSeg [84]
+
+RGB-T
+
+97.6
+
+87.9 71.7 64.6 44.8
+
+22.7
+
+6.4
+
+AFNet [85]
+
+RGB-T
+
+98.0
+
+86.0 67.4 62.0 43.0
+
+28.9
+
+4.6
+
+ABMDRNet [10]
+
+RGB-T
+
+98.6
+
+84.8 69.6 60.3 45.1
+
+33.1
+
+5.1
+
+FEANet [17]
+
+RGB-T
+
+98.3
+
+87.8 71.1 61.1 46.5
+
+22.1
+
+6.6
+
+GMNet [19]
+
+RGB-T
+
+97.5
+
+86.5 73.1 61.7 44.0
+
+42.3
+
+14.5
+
+CMX (SegFormer-B2) RGB-T
+
+98.3
+
+89.4 74.8 64.7 47.3
+
+30.1
+
+8.1
+
+CMX (SegFormer-B4) RGB-T
+
+98.3
+
+90.1 75.2 64.5 50.2
+
+35.3
+
+8.5
+
+0.1
+
+30.5 36.1
+
+30.3
+
+18.8 41.3
+
+12.0
+
+51.5 42.3
+
+41.0
+
+0.2 43.3
+
+30.6
+
+44.2 45.1
+
+33.2
+
+44.4 46.1
+
+35.6
+
+45.6 49.0
+
+42.1
+
+40.9 50.7
+
+46.6
+
+47.3 51.7
+
+50.9
+
+49.6 53.2
+
+50.8
+
+57.7 54.8
+
+25.2
+
+27.7 39.7
+
+24.5
+
+48.8 45.8
+
+30.1
+
+32.3 46.1
+
+16.9
+
+44.4 46.3
+
+39.4
+
+45.0 48.4
+
+29.1
+
+55.7 53.2
+
+46.9
+
+47.9 54.5
+
+44.9
+
+56.6 54.6
+
+47.4
+
+50.0 54.8
+
+55.3
+
+48.9 55.3
+
+48.7
+
+47.4 57.3
+
+52.4
+
+59.4 58.2
+
+54.2
+
+60.6 59.7
+
+ScanNetV2. We have also tested our CMX model with SegFormer-B2 on the ScanNetV2 benchmark. As shown in Table 4, RGB-D methods generally obtain better performance than RGB-only methods. It can be clearly seen that CMX outperforms RGB methods and achieves the top mIoU of 61.3% among the RGB-D methods. On the ScanNetV2 leaderboard, while there are methods like BPNet [98] that reaches a higher score, they rely on 3D supervision from point clouds to perform joint 2D- and 3D reasoning. In contrast, our method attains a competitively accurate performance by using purely 2D data and effectively leveraging the complementary information inside RGB-D modalities. Cityscapes. The previous results are reported on indoor RGB-D datasets. To study the generalizability to outdoor scenes, we assess the effectiveness of CMX on Cityscapes, a well-known semantic segmentation dataset of RGB-D road-driving environments. As shown in Table 5, we compare the performances of our models against state-of-the-art RGB and RGB-D methods. Compared with SegFormer-B2 (RGB), our RGB-D approach elevates the accuracy by 0.6% in mIoU. Our approach based on SegFormer-B4 achieves a state-of-the-art score of 82.6% among the competitive models, outstripping all existing RGB-D methods on Cityscapes by more than 0.4% in absolute mIoU values, verifying that CMX generalizes well to street scene understanding.
+5.2 Results on RGB-Thermal Dataset
+We then investigate the generalizability of our approach to another modality combination scenario, precisely, RGB-Thermal semantic segmentation on the MFNet dataset [9]. Comparison with the state-of-the-art. In Table 6, we compare our method against RGB-only models and multi-modal methods using RGB-T inputs. As unfolded, ACNet [7] and SA-Gate [8], designed for RGB-D segmentation, perform less satisfactorily on RGB-T data, as they only use a global channel-wise fusion strategy and thereby fail to fully exploit the complementary cues. Depth-aware CNN [14], an input fusion method with modalityspeciﬁc operator design, also does not yield high performance.
+
+TABLE 7: Segmentation results on daytime- and nighttime images on the MFNet dataset [9].
+
+Method
+FRRN [138] DFN [139] BiSeNet [140] SegFormer-B2 [61] SegFormer-B4 [61]
+MFNet [9] FuseNet [127] RTFNet [82] FuseSeg [84] GMNet [19]
+CMX (SegFormer-B2) CMX (SegFormer-B4)
+
+Modal
+RGB RGB RGB RGB RGB
+RGB-T RGB-T RGB-T RGB-T RGB-T
+RGB-T RGB-T
+
+Daytime mIoU mAcc
+40.0 45.1 38.0 42.4 44.8 52.9 48.6 60.9 49.4 65.0
+36.1 42.6 41.0 49.5 45.8 60.0 47.8 62.1 49.0 71.0
+51.3 70.2 52.5 69.5
+
+Nighttime mIoU mAcc
+37.3 41.6 42.3 46.2 47.7 53.1 49.2 64.2 52.4 61.4
+36.8 41.4 43.9 48.9 54.8 60.7 54.6 67.3 57.7 71.3
+57.8 67.4 59.4 69.6
+
+In contrast, the proposed CMX strategy, enabling comprehensive interactions from various perspectives, generalizes smoothly in RGB-T semantic segmentation. It can be seen that our method based on SegFormer-B2 achieves mIoU of 58.2%, clearly outperforming the previous best RGB-T methods ABMDRNet [10], FEANet [17], and GMNet [19]. Our CMX solution based on SegFormer-B4 further elevates state-of-the-art mIoU to 59.7%, widening the accuracy gap in contrast to existing methods. Moreover, it is worth pointing out that the improvements brought by our RGB-X approach compared with the RGB baselines are compelling, i.e., +5.0% and +4.9% in mIoU for SegFormer-B2 and -B4 backbones, respectively. Our approach overall achieves top scores on car, person, bike, curve, car stop, and bump. For person with infrared properties, our approach enjoys more than +11.0% gain in IoU, conﬁrming the effectiveness of CMX in harvesting complementary cross-modal information. Day and night performances. Following [19], [84], we assess day- and night segmentation results of our models compared against existing methods. For daytime scenes, both RGB- and
+
+10
+TABLE 8: Per-class results on the ZJU-RGB-P dataset [11] for RGB-Polarization semantic segmentation.
+
+Method
+
+Modal
+
+Building Glass Car Road Vegetation Sky Pedestrian Bicycle mIoU
+
+SwiftNet [130] EAFNet [11] NLFNet [112] SegFormer-B2 [61]
+
+RGB RGB-P RGB-P RGB
+
+83.0
+
+73.4 91.6 96.7
+
+87.0
+
+79.3 93.6 97.4
+
+85.4
+
+77.1 93.5 97.7
+
+90.6
+
+79.0 92.8 96.6
+
+94.5
+
+84.7
+
+36.1
+
+95.3
+
+87.1
+
+60.4
+
+93.2
+
+85.9
+
+56.9
+
+96.2
+
+89.6
+
+82.9
+
+82.5 80.3 85.6 85.7 85.5 84.4 89.3 89.6
+
+CMX (SegFormer-B2) RGB-AoLP (Monochromatic) 91.9
+
+CMX (SegFormer-B2) RGB-AoLP (Trichromatic)
+
+91.5
+
+CMX (SegFormer-B4) RGB-AoLP (Monochromatic) 91.8
+
+CMX (SegFormer-B4) RGB-AoLP (Trichromatic)
+
+91.6
+
+87.0 95.6 98.2 87.3 95.8 98.2 88.8 96.3 98.3 88.8 96.3 98.3
+
+96.7
+
+89.0
+
+84.9
+
+96.6
+
+89.3
+
+85.6
+
+96.7
+
+89.1
+
+86.3
+
+96.8
+
+89.7
+
+86.2
+
+92.0 91.8 91.9 92.0 92.3 92.4 92.8 92.6
+
+CMX (SegFormer-B2) RGB-DoLP (Monochromatic) 91.4
+
+CMX (SegFormer-B2) RGB-DoLP (Trichromatic)
+
+91.8
+
+CMX (SegFormer-B4) RGB-DoLP (Monochromatic) 91.8
+
+CMX (SegFormer-B4) RGB-DoLP (Trichromatic)
+
+91.6
+
+87.6 96.0 98.2 87.8 96.1 98.2 88.6 96.3 98.3 88.6 96.3 98.3
+
+96.6
+
+89.1
+
+87.1
+
+96.7
+
+89.4
+
+86.1
+
+96.7
+
+89.4
+
+86.0
+
+96.7
+
+89.5
+
+86.4
+
+92.3 92.1 91.8 92.2 92.1 92.4 92.2 92.5
+
+thermal images provide beneﬁcial meaningful information, and our approach increases IoU by 2.7%∼3.1% compared with RGBonly baselines. At the nighttime, RGB segmentation often suffers from poor lighting conditions, and it even carries much noisy information in the RGB data. Yet, our CMX rectiﬁes the noisy images and exploits supplementary features from thermal data, dramatically improving the performances by >7.0% in mIoU at night and enhancing the robustness of semantic scene understanding in unfavorable environments with adverse illuminations.
+5.3 Results on RGB-Polarization Dataset
+We now extend the study to RGB-P semantic segmentation on the ZJU-RGB-P dataset [11]. Comparison with the state-of-the-art. Table 8 shows per-class accuracy of our approach compared against RGB-only [61], [130] and RGB-Polarization fusion methods [11], [112]. Our approach largely elevates state-of-the-art performance, outperforming the previous best RGB-P method [11] by >6.0% in mIoU. We observe that the accuracy improvement on pedestrian is signiﬁcant thanks to the capacity of the transformer backbone and our crossmodal fusion mechanisms. The IoU improvements compared to the results using only RGB modality (SegFormer-B2 [61]) are clear on classes with polarimetric characteristics such as glass (>8.0%) and car (>2.5%), further evidencing the generalizability of our cross-modal fusion solution in bridging RGB-P streams. Polarization data representations. We study polarimetric data representations and the results displayed in Table 8 indicate that AoLP and DoLP representations both carry effective polarization information beneﬁcial for semantic scene understanding, which is consistent with the ﬁnding in [11]. Besides, trichromatic representations are consistently better than monochromatic representations used in previous RGB-P segmentation works [11], [112]. This is expected as the trichromatic representation provides more detailed information, which should be leveraged to fully unlock the potential of trichromatic polarization cameras.
+5.4 Results on RGB-Event Dataset
+We take a step further to assess the generalizability of our proposed approach for dense-sparse data fusion. Comparison with the state-of-the-art. In Table 9, we benchmark more than 10 semantic segmentation methods. We compare our models against RGB-only methods covering CNNbased SwiftNet [130], Fast-SCNN [141], CGNet [142], and DeepLabV3+ [143], as well as transformer-based Swin [24],
+
+TABLE 9: Results for RGB-Event semantic segmentation.
+
+Method
+
+Modal Backbone mIoU (%) Pixel Acc. (%)
+
+SwiftNet [130] Fast-SCNN [141] CGNet [142] Trans4Trans [3] Swin-s [24] Swin-b [24] DeepLabV3+ [143] SegFormer-B2 [61] SegFormer-B4 [61]
+
+RGB RGB RGB RGB RGB RGB RGB RGB RGB
+
+ResNet-18 Fast-SCNN
+M3N21 PVT-B2 Swin-s Swin-b ResNet-101 MiT-B2 MiT-B4
+
+36.67 44.27 44.75 51.86 52.49 53.31 53.65 58.69 59.86
+
+83.46 87.10 87.13 89.03 88.78 89.21 89.92 91.21 91.61
+
+RFNet [1] ISSAFE [12] SA-Gate [8]
+
+RGB-E ResNet-18 RGB-E ResNet-18 RGB-E ResNet-101
+
+41.34 43.61 53.94
+
+86.25 86.83 90.03
+
+CMX (DeepLabV3+) RGB-E ResNet-101
+
+CMX (Swin-s)
+
+RGB-E Swin-s
+
+CMX (Swin-b)
+
+RGB-E Swin-b
+
+CMX (SegFormer-B2) RGB-E MiT-B2
+
+CMX (SegFormer-B4) RGB-E MiT-B4
+
+54.91 60.86 61.21 61.90 64.28
+
+89.67 91.25 91.61 91.88 92.60
+
+SegFormer [61], and Trans4Trans [3]. We also include multimodal methods, spanning RFNet [1] designed for road-driving scene segmentation and ISSAFE [12], the only known RGB-Event method designed for trafﬁc accident scene segmentation, as well as SA-Gate [8], a state-of-the-art RGB-D segmentation method. While efﬁciently attaining accuracy improvements over SwiftNet, RFNet and ISSAFE overall only achieve rather unsatisfactory mIoU scores. SA-Gate, crafted for RGB-D data, is also less effective in the RGB-E combination scenario.
+Compared with existing methods, our models improve segmentation performance by mixing RGB-Event features, as it can be clearly seen in Table 9 and Fig. 6. Our model using MiT-B4 as the backbone reaches 64.28% in mIoU, towering over all other methods and setting the state-of-the-art on the RGB-E benchmark. This further veriﬁes the versatility of our solution for different multi-modal combinations. Moreover, we experiment with DeepLabV3+ [143] and Swin transformer with UperNet [144] in dual-branch structures by using their multi-stage features with CMX. The results show that our RGB-X solution consistently improves the scores of RGB-only models, conﬁrming that our method is not strictly tied to a concrete backbone architecture, but can be easily deployed with other CNN- and transformer models, which helps to yield effective models for multi-modal semantic segmentation. Fig. 6 depicts per-class accuracy comparison between the RGB baseline and our RGB-Event model with
+
+SegFormer Ours
+
+100
+
+87.1
+
+85.4
+
+90.7
+
+96.5
+
+82.2
+
+80
+
+63.3
+
+60 85.0
+40
+20
+
+84.8
+
+49.4 88.6 51.0
+
+96.2
+
+40.6 34.4
+
+37.6 35.7
+
+28.8 27.3
+
+51.6
+
+79.8 37.8
+33.8
+
+43.3 36.3
+
+Vehicle Building
+
+WallVegetation
+
+Road
+
+PoleRoadLines
+
+Fences PedestrianTrafficSign SidewalkTrafficLight
+
+Fig. 6: Per-class accuracy comparison in IoU between RGB and RGB-Event semantic segmentation.
+
+SegFormer-B2. With event data, the foreground objects are more accurately parsed by our RGB-E model, such as vehicle (+2.1%), pedestrian (+11.7%), and trafﬁc light (+7.0%). Event data representations. In Table 10, we further study with different settings of event time bin B={1, 3, 5, 10, 15, 20, 30} with our CMX fusion model based on SegFormer B2. Compared with the original event representation [33], our method achieves consistent improvements (visualized in Fig. 7) on different settings of event time bins, such as +1.63% of mIoU when B=30. In particular, it helps our CMX to obtain the highest mIoU of 61.90% in the setting of B=3. In B=1, embedding all events in a single time bin leads to dragging behind images of moving objects and being sub-optimal for feature fusion. In higher time bins, events produced in a short interval are dispersed to more bins, resulting in insufﬁcient events in a single bin. These corroborate relevant observations in [12], [90] and that the event representation B=3 is an effective time bin setting for RGB-E semantic segmentation with CMX. We note that the models in Table 10 are trained on an A100 GPU, and CMX produces a slightly different pixel accuracy score compared to that of ours (SegFormer-B2) in Table 9.
+
+11
+62 Original Ours
+61
+
+mIoU (%)
+
+60
+
+59
+
+5
+
+10
+
+15
+
+20
+
+25
+
+30
+
+Event time bins
+
+Fig. 7: Effect of event representations and time bins.
+
+information encoded into HHA as the complementary modality here. We take MiT-B2 as the backbone with the MLP decoder in our ablation studies, unless speciﬁed. The semantic segmentation performance is evaluated on the NYU Depth V2 dataset. Effectiveness of CM-FRM and FFM. We design CM-FRM and FFM to rectify and merge features coming from the RGBand X-modality branches. We take out these two modules from the architecture respectively, where the results are shown in Table 11. If CM-FRM is ablated, the features will be extracted independently in their own branches, and for FFM we simply average the two features for semantic prediction. Compared with the baseline, using only CM-FRM improves mIoU by 2.5%, using only FFM improves mIoU by 1.2%, and together CM-FRM and FFM improve the semantic segmentation performance by 3.8%.
+TABLE 11: Ablation for CM-FRM/FFM on NYU Depth V2 test set.
+
+Feature Rectify
+No CM-FRM No CM-FRM
+
+Feature Fusion
+Avg. Avg. FFM FFM
+
+mIoU (%)
+50.3 52.8 51.5 54.1
+
+Pixel Acc. (%)
+76.8 78.0 77.1 78.7
+
+TABLE 10: Comparison of event representations and time bins.
+
+Time bins mIoU (%) Pixel Acc. (%)
+
+Original representation [33]
+
+B=1 B=3 B=5 B=10 B=15 B=20 B=30
+
+61.30 61.28 60.32 60.48 60.04 60.93 59.60
+
+91.75 91.64 91.38 91.64 91.44 91.74 91.15
+
+Ours
+
+B=1 B=3 B=5 B=10 B=15 B=20 B=30
+
+61.47 61.90 61.23 61.33 60.60 61.62 61.23
+
+91.92 91.86 91.92 91.78 91.76 91.93 91.71
+
+5.5 Ablation Study
+We perform a series of ablation studies to explore how different parts of our architecture affect the segmentation. We use depth
+
+Ablation with CM-FRM and FFM variants. We further experiment with variants of the CM-FRM and FFM modules. As shown in Table 12, channel only denotes using channel-wise rectiﬁcation only (λC =0 and λS=1), and spatial only means using spatialwise rectiﬁcation only (λC =0 and λS=1). It can be seen that replacing the proposed CM-FRM by either channel only or spatial only causes a sub-optimal accuracy, further conﬁrming the efﬁcacy of combining the two dimensions’ rectiﬁcation for holistic feature calibration, which is crucial for robust multi-modal segmentation. In our channel-wise calibration, we use both global average pooling and global max pooling to remain more information. The results in Table 12 show the effects of using only global average pooling (avg. p.) and using only global max pooling (max. p.). Both of them are less effective than our complete CM-FRM, which offers a more comprehensive rectiﬁcation.
+Previous ablation studies support the design of CM-FRM. To understand the capability of FFM, we here test with two variants. As shown in Table 12, stage 2 only means there is no information exchange before the mixed channel embedding, whereas self attn denotes that the context vectors will not be exchanged in the stage 1 of FFM. The proposed modules productively rectify and fuse the features in different levels. Speciﬁcally, the experiments with the FFM variants illustrate the effectiveness of our cross-attention
+
+TABLE 12: Ablation with different CM-FRM/FFM variants on NYU Depth V2 test set. channel only denotes using channelwise rectiﬁcation only and spatial only denotes using spatial-wise rectiﬁcation only. avg.p. denotes using average pooling only and max.p. means using max pooling only in CM-FRM. stage 2 only means there is no information exchange before mixed channel embedding, while self attn denotes that the context vectors are not exchanged in stage 1 of FFM.
+
+12
+TABLE 14: Efﬁciency results. FLOPs are estimated for inputs of RGB (480×640×3) and HHA (480×640×3).
+
+Method SA-Gate [8] (ResNet50) CMX (SegFormer-B2) CMX (SegFormer-B4) CMX (SegFormer-B5)
+
+Params/M 63.4 66.6 139.9 181.1
+
+FLOPs/G 204.9 67.6 134.3 167.8
+
+mIoU (%) 50.4 54.1 56.0 56.8
+
+Feature Rectify
+
+Feature Fusion mIoU (%) Pixel Acc. (%)
+
+CM-FRM channel only FFM CM-FRM spatial only FFM
+
+53.6
+
+78.5
+
+53.3
+
+78.3
+
+CM-FRM avg. p. CM-FRM max. p.
+
+FFM FFM
+
+53.0
+
+78.1
+
+53.5
+
+78.5
+
+CM-FRM CM-FRM
+
+FFM stage 2 only 53.8
+
+78.5
+
+FFM self attn
+
+53.8
+
+78.6
+
+CM-FRM
+
+FFM
+
+54.1
+
+78.7
+
+design for information exchange. In contrast to the complete FFM, the variant using only self-attention is less constructive, and it does not bring clear beneﬁts compared to the variant with only stage 2. These indicate the importance of fusion from the sequence-tosequence perspective, which is not considered in previous works. Overall, the ablation shows that our interactive strategy, providing comprehensive interactions, is effective for cross-modal fusion. Ablation of the supplementary modality. Previous works have shown that multi-modal segmentation has a better performance than single-modal RGB segmentation [7]. We carry out experiments to certify and the results are shown in Table 13. Note that here, the MLP decoder is not used, in order to focus on studying the inﬂuence of feature extraction from different supplementary modalities. First, we use only a single MiT-B2 backbone which uses only RGB information. Then, due to our approach using two parallel backbones, to facilitate a fair comparison we keep a dualpath architecture with both RGB inputs, which results slightly better than a single backbone. Additionally, we replace the second modality with random noise, which obtains even better results than two RGB inputs. This means that even pure noise information may help the model to identify noisy information in the RGB branch. The model learns to focus on relevant features and thus gains robustness. It may also help prevent over-ﬁtting during the learning process. However, when using depth information, we have observed obvious improvements compared to these three settings, which further proves that the fusion of RGB and depth information brings clearly better predictions. Encoding depth images using the HHA representation further increases the scores. The overall gain of 5.3% in mIoU, compared with the RGB-only baseline, is also compelling, which is similar to that in RGB-T semantic segmentation, demonstrating the effectiveness of our proposed method for rectifying and fusing cross-modal information.
+TABLE 13: Ablation for the second modality on NYU Depth V2 test set.
+
+Modalities RGB RGB + RGB RGB + Noise RGB + Raw depth RGB + HHA
+
+mIoU (%) 46.7 47.2 47.7 51.1 52.0
+
+Pixel Acc. (%) 73.8 74.1 74.5 75.7 77.0
+
+5.6 Efﬁciency Analysis
+In Table 14, we present computational complexity results of our models. Compared with the previous state-of-the-art method SAGate [8] on the NYU Depth V2 dataset using ResNet50, our model with SegFormer-B2 has similar #Params but signiﬁcantly lower FLOPs. Our CMX model with SegFormer-B4 greatly elevates the mIoU score to 56.0%, further widening the accuracy gap with moderate model complexity. With SegFormer-B5, mIoU further increases to 56.8%, but it also comes with larger complexity. For efﬁciency-critical applications, the CMX solution with SegFormer-B2 or -B4 would be preferred to enable both accurate and efﬁcient multi-modal semantic scene perception.
+5.7 Qualitative Analysis
+In our ﬁnal study, we showcase various examples of representative qualitative results to deepen the analysis. Segmentation results. We visualize four segmentation results across different modality combinations with the backbone of SegFormer-B2 in Fig. 8. The proposed method can harvest complementary information from the second modality and thereby yields more accuracy segmentation results. For RGB-D semantic segmentation in an indoor scene from the NYU Depth V2 dataset [28], CMX leverages geometric information and correctly identiﬁes the bed while the RGB-only model wrongly classiﬁes it as a sofa. For RGB-T segmentation, while the baseline yields very coarse segmentation under the low illumination conditions at night, much clearer boundary distinctions are made by our method between the persons and unlabeled background with infrared information acquired in the thermal modality and fused via our solution. For RGB-P segmentation, specular glass areas are more precisely parsed, the cars which also contain polarization cues are completely and smoothly segmented with delineated borders, and the pedestrian detection also shows beneﬁcial effects. Moreover, for dense-sparse fusion of RGB-Event data, our method generalizes well and enhances the segmentation of moving objects. Overall, the qualitative examination backs up that our general approach is suitable for a diverse mix of multi-modal sensing combinations for robust semantic scene understanding.
+We further view the outdoor RGB-D semantic segmentation results on the Cityscapes dataset [32] based on the backbone of SegFormer-B4. We show the results of the baseline RGB-only model and our RGB-X approach, in particular the difference maps w.r.t. the segmentation ground truth. As displayed in Fig. 9, in spite of the noisy depth measurements, the HHA image encoding depth information still beneﬁts the segmentation via our model that is able to rectify and fuse cross-modal complementary features. It can be seen that our approach has better pixel accuracy scores on a wide variety of driving scene elements such as fence, rider, sidewalk, and road in the positive group, which are highlighted in green boxes. However, the shadows and weak illumination conditions are still challenging for both models and make the
+
+13
+
+Fig. 8: Visualization of semantic segmentation results for RGB-only and RGB-X approaches. We use SegFormer-B2 for RGB segmentation and the proposed approach with the same backbone MiT-B2 and MLP-Decoder for RGB-X segmentation. From top to bottom: RGB-Depth, RGB-Thermal, RGB-Polarization (AoLP), and RGB-Event semantic segmentation.
+
+depth cues less effective. For example, depth information in the regions of sidewalk in the negative group, may be less informative for fusion, as highlighted in the red boxes.
+Feature analysis. To understand the key module for feature rectiﬁcation, we visualize the input- and rectiﬁed features of CM-FRM in layer 1, and their difference map, as shown in Fig. 10. It can be seen that the feature maps are enhanced in both streams after the cross-modal calibration. The RGB-stream delivers texture information to the supplement modality, while the supplement modality further improves the boundary and emphasizes complementary discontinuities of RGB features. In the RGB-D segmentation scenario, the RGB-feature difference map shows that the ground area is better spotlighted, thanks to the HHA image encoding depth information, which provides geometric cues such as height above ground, beneﬁcial for higher-level semantic prediction of groundrelated classes. In the RGB-T nighttime scene parsing cases, the pedestrians are hard to be seen in the RGB images. But the RGBfeature difference map clearly highlights the pedestrians thanks to the supplementary thermal modality with infrared imaging. These indicate that the complementary features have been infused into the RGB-stream. The RGB features have been rectiﬁed to better focus on informative ones and capture such complementary discontinuities towards accurate semantic understanding.
+
+6 CONCLUSION
+To revitalize multi-modal pixel-wise semantic scene understanding, we investigate RGB-X semantic segmentation and propose CMX, a universal vision-transformer-based cross-modal fusion architecture, which is generalizable to a diverse mix of sensing data combinations. We put forward a Cross-Modal Feature Rectiﬁcation Module (CM-FRM) and a Feature Fusion Module (FFM) for facilitating interactions towards accurate RGB-X semantic segmentation. CM-FRM conducts channel- and spatialwise rectiﬁcation, rendering comprehensive feature calibration. FFM intertwines cross-attention and mixed channel embedding for enhanced global information exchange. To further assess the generalizability of CMX to dense-sparse data fusion, we establish an RGB-Event semantic segmentation benchmark. We study effective representations of polarimetric- and event data, indicating the optimal path to follow for reaching robust multi-modal semantic segmentation. The proposed model sets the new state-of-the-art on eight benchmarks, spanning ﬁve RGB-D datasets, as well as RGB-Thermal, RGB-Polarization, and RGB-Event combinations.
+In the future, we aim to extend CMX to a three-path architecture for combing three or more types of sensor data. Another possible research direction is to investigate multi-modal pretraining for learning complementary synergies between modalities that are beneﬁcial for downstream semantic segmentation tasks.
+
+RGB
+
+Baseline difference map Acc=66.09%
+
+Acc=71.78%
+
+Acc=78.04%
+
+Acc=91.15%
+
+Acc=83.25% Acc=83.38%
+
+HHA
+
+Our difference map Acc=66.62%
+
+Acc=71.89%
+
+Acc=79.57%
+
+Acc=92.24%
+
+Acc=81.02% Acc=81.16%
+
+14 GT
+
+Fig. 9: Visualization of semantic segmentation results for the RGB-only baseline and our RGB-X approach, both of which are based on SegFormer-B4. “Acc” is short for pixel accuracy of the segmentation result. From left to right: RGB image, baseline difference map w.r.t. the ground truth, HHA image encoding depth information, our difference map, and segmentation ground truth.
+
+Fig. 10: Visualization of the feature extracted in layer 1 and the rectiﬁed feature, and their difference map.
+
+ACKNOWLEDGMENTS
+This work was supported in part by the Federal Ministry of Labor and Social Affairs (BMAS) through the AccessibleMaps project under Grant 01KM151112, in part by the University of Excellence through the “KIT Future Fields” project, in part by the Helmholtz Association Initiative and Networking Fund on the
+
+HAICORE@KIT partition, and in part by Hangzhou SurImage Technology Company Ltd.
+
+APPENDIX A MORE IMPLEMENTATION DETAILS
+We implement our experiments with PyTorch. We employ a poly learning rate schedule with a factor of 0.9 and an initial learning rate of 6e−5. The number of warm-up epochs is 10. We now describe speciﬁc implementation details for different datasets. NYU Depth V2 dataset. We train our model with the MiT-B2 backbone on four 2080Ti GPUs, models with MiT-B4 and MiTB5 backbones on three 3090 GPUs. The number of training epochs is set as 500. We take the whole image with the size 640×480 for training and inference. We use a batch size of 8 for the MiT-B2 backbone and 6 for MiT-B4 and MiT-B5. SUN-RGBD dataset. The models are trained with a batch-size of 4 per GPU. During training, the images are randomly cropped to 480×480. The model based on MiT-B2 is trained on two V100 GPUs for 200 epochs. The models based on MiT-B4 and MiT-B5 are trained on eight V100 GPUs, 250 epochs for MiT-B4 and 300 epochs for MiT-B5. Stanford2D3D dataset. The model is trained on four 2080Ti GPUs. The number of training epochs here is set as 32. We resize the input images to 480×480. We use a batch size of 12 for the MiT-B2 backbone and 8 for MiT-B4. ScanNetV2 dataset. The model is trained on four 2080Ti GPUs. The number of training epochs here is set as 100. We resize the input RGB images to 640×480. We use a batch size of 12 for the MiT-B2 backbone. Cityscapes dataset. The model is trained on eight A100 GPUs for 500 epochs. The batch size is set as 8. The images are randomly cropped into 1024×1024 for training and inference is performed on the full resolution with a sliding window of 512×512. The embedding dimension of the MiT-B4 backbone and MLP-decoder is set as 768. RGB-T MFNet dataset. The model is trained on four 2080Ti GPUs. We use the original image size of 640 × 480 for training and inference. Batch size is set to 8 for the MiT-B2 backbone and we train for 500 epochs. Consistent with the batch size of 8, the model based on MiT-B4 is trained on four A100 GPUs, which requires a larger memory. RGB-P ZJU dataset. The model is trained on four 2080Ti GPUs. We resize the image from 1224×1024 to 612×512. The number of training epochs is set as 400. We use a batch size of 8 for the MiT-B2 backbone and 4 for MiT-B4. RGB-E EventScape dataset. The proposed model is trained with a batch size of 4 and the original resolution of 512×256 on a single 1080Ti GPU. The number of training epochs is set as 100. The embedding dimension of the MiT-B4 backbone and MLPdecoder is set as 768.
+APPENDIX B FAILURE CASE ANALYSES
+In addition to the representative qualitative results and analyses that sufﬁciently show the effectiveness of CMX, we further present failure case analysis to help gather a more comprehensive understanding of RGB-X semantic segmentation.
+In Fig. 11, we show a set of failure cases in different sensing modality combination scenarios. The ﬁrst rows shows that for the RGB-D semantic segmentation in a highly composite indoor scene with extremely densely arranged objects, the parsing results are still less visually satisfactory. In the second row of a nighttime
+
+15
+scene, the guardrails are mis-classiﬁed by the RGB-X method as color cone, despite our model delivering more complete and consistent segmentation than the RGB-only model and having better segmentation of person with thermal properties. This illustrates that at night, the perception of some remote objects is still challenging in RGB-T semantic segmentation and it should be noted for safety-critical applications like automated driving. In the third row, the RGB-P model might be misguided by the polarized background area in an occluded situation, and yields less accurate parsing results, indicating that polarization, as a strong prior for segmentation of specular surfaces like glass and car regions, should be carefully leveraged in unconstrained scenes with a lot of occlusions. In the last row, the fences are partially detected as vehicles in the RGB-E segmentation result, but our model still yields more correctly identiﬁed pixels than the RGBonly model by harvesting complementary cues from event data.
+REFERENCES
+[1] L. Sun, K. Yang, X. Hu, W. Hu, and K. Wang, “Real-time fusion network for RGB-D semantic segmentation incorporating unexpected obstacle detection for road-driving images,” RA-L, vol. 5, no. 4, pp. 5558–5565, 2020.
+[2] D. Seichter, M. Ko¨hler, B. Lewandowski, T. Wengefeld, and H.M. Gross, “Efﬁcient RGB-D semantic segmentation for indoor scene analysis,” in ICRA, 2021.
+[3] J. Zhang, K. Yang, A. Constantinescu, K. Peng, K. Mu¨ller, and R. Stiefelhagen, “Trans4Trans: Efﬁcient transformer for transparent object segmentation to help visually impaired people navigate in the real world,” in ICCVW, 2021.
+[4] L.-C. Chen, G. Papandreou, I. Kokkinos, K. Murphy, and A. L. Yuille, “DeepLab: Semantic image segmentation with deep convolutional nets, atrous convolution, and fully connected CRFs,” TPAMI, vol. 40, no. 4, pp. 834–848, 2018.
+[5] V. Badrinarayanan, A. Kendall, and R. Cipolla, “SegNet: A deep convolutional encoder-decoder architecture for image segmentation,” TPAMI, vol. 39, no. 12, pp. 2481–2495, 2017.
+[6] J. Wang, K. Sun, T. Cheng, B. Jiang, C. Deng, Y. Zhao, D. Liu, Y. Mu, M. Tan, X. Wang, W. Liu, and B. Xiao, “Deep high-resolution representation learning for visual recognition,” TPAMI, vol. 43, no. 10, pp. 3349–3364, 2021.
+[7] X. Hu, K. Yang, L. Fei, and K. Wang, “ACNet: Attention based network to exploit complementary features for RGBD semantic segmentation,” in ICIP, 2019.
+[8] X. Chen, K.-Y. Lin, J. Wang, W. Wu, C. Qian, H. Li, and G. Zeng, “Bi-directional cross-modality feature propagation with separation-andaggregation gate for RGB-D semantic segmentation,” in ECCV, 2020.
+[9] Q. Ha, K. Watanabe, T. Karasawa, Y. Ushiku, and T. Harada, “MFNet: Towards real-time semantic segmentation for autonomous vehicles with multi-spectral scenes,” in IROS, 2017.
+[10] Q. Zhang, S. Zhao, Y. Luo, D. Zhang, N. Huang, and J. Han, “ABMDRNet: Adaptive-weighted bi-directional modality difference reduction network for RGB-T semantic segmentation,” in CVPR, 2021.
+[11] K. Xiang, K. Yang, and K. Wang, “Polarization-driven semantic segmentation via efﬁcient attention-bridged fusion,” OE, vol. 29, no. 4, pp. 4802–4820, 2021.
+[12] J. Zhang, K. Yang, and R. Stiefelhagen, “ISSAFE: Improving semantic segmentation in accidents by fusing event-based data,” in IROS, 2021.
+[13] Y. Zhang, D. Sidibe´, O. Morel, and F. Me´riaudeau, “Deep multimodal fusion for semantic image segmentation: A survey,” IVC, vol. 105, p. 104042, 2020.
+[14] W. Wang and U. Neumann, “Depth-aware CNN for RGB-D segmentation,” in ECCV, 2018.
+[15] J. Cao, H. Leng, D. Lischinski, D. Cohen-Or, C. Tu, and Y. Li, “ShapeConv: Shape-aware convolutional layer for indoor RGB-D semantic segmentation,” in ICCV, 2021.
+[16] L.-Z. Chen, Z. Lin, Z. Wang, Y.-L. Yang, and M.-M. Cheng, “Spatial information guided convolution for real-time RGBD semantic segmentation,” TIP, vol. 30, pp. 2313–2324, 2021.
+[17] F. Deng, H. Feng, M. Liang, H. Wang, Y. Yang, Y. Gao, J. Chen, J. Hu, X. Guo, and T. L. Lam, “FEANet: Feature-enhanced attention network for RGB-thermal real-time semantic segmentation,” in IROS, 2021.
+
+16
+
+Fig. 11: Visualization of failure cases. We use SegFormer-B2 for RGB segmentation and the proposed approach with the same backbone MiT-B2 and MLP-Decoder for RGB-X segmentation. From top to bottom: RGB-Depth, RGB-Thermal, RGB-Polarization (AoLP), and RGB-Event semantic segmentation.
+
+[18] D. Lin and H. Huang, “Zig-zag network for semantic segmentation of RGB-D images,” TPAMI, vol. 42, no. 10, pp. 2642–2655, 2020.
+[19] W. Zhou, J. Liu, J. Lei, L. Yu, and J.-N. Hwang, “GMNet: Gradedfeature multilabel-learning network for RGB-thermal urban scene semantic segmentation,” TIP, vol. 30, pp. 7790–7802, 2021.
+[20] D. Sun, X. Huang, and K. Yang, “A multimodal vision sensor for autonomous driving,” in SPIE, 2019.
+[21] R. Girdhar, M. Singh, N. Ravi, L. van der Maaten, A. Joulin, and I. Misra, “Omnivore: A single model for many visual modalities,” in CVPR, 2022.
+[22] A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai, T. Unterthiner, M. Dehghani, M. Minderer, G. Heigold, S. Gelly, J. Uszkoreit, and N. Houlsby, “An image is worth 16x16 words: Transformers for image recognition at scale,” in ICLR, 2021.
+[23] H. Touvron, M. Cord, M. Douze, F. Massa, A. Sablayrolles, and H. Je´gou, “Training data-efﬁcient image transformers & distillation through attention,” in ICML, 2021.
+[24] Z. Liu, Y. Lin, Y. Cao, H. Hu, Y. Wei, Z. Zhang, S. Lin, and B. Guo, “Swin transformer: Hierarchical vision transformer using shifted windows,” in ICCV, 2021.
+[25] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” in NeurIPS, 2017.
+[26] J. Fu, J. Liu, H. Tian, Y. Li, Y. Bao, Z. Fang, and H. Lu, “Dual attention network for scene segmentation,” in CVPR, 2019.
+[27] S. Zheng, J. Lu, H. Zhao, X. Zhu, Z. Luo, Y. Wang, Y. Fu, J. Feng, T. Xiang, P. H. S. Torr, and L. Zhang, “Rethinking semantic segmentation from a sequence-to-sequence perspective with transformers,” in CVPR, 2021.
+[28] N. Silberman, D. Hoiem, P. Kohli, and R. Fergus, “Indoor segmentation and support inference from RGBD images,” in ECCV, 2012.
+[29] S. Song, S. P. Lichtenberg, and J. Xiao, “SUN RGB-D: A RGB-D scene understanding benchmark suite,” in CVPR, 2015.
+[30] I. Armeni, S. Sax, A. R. Zamir, and S. Savarese, “Joint 2D-3D-semantic
+
+data for indoor scene understanding,” arXiv preprint arXiv:1702.01105, 2017. [31] A. Dai, A. X. Chang, M. Savva, M. Halber, T. Funkhouser, and M. Nießner, “ScanNet: Richly-annotated 3D reconstructions of indoor scenes,” in CVPR, 2017. [32] M. Cordts, M. Omran, S. Ramos, T. Rehfeld, M. Enzweiler, R. Benenson, U. Franke, S. Roth, and B. Schiele, “The cityscapes dataset for semantic urban scene understanding,” in CVPR, 2016. [33] D. Gehrig, M. Ru¨egg, M. Gehrig, J. Hidalgo-Carrio´, and D. Scaramuzza, “Combining events and frames using recurrent asynchronous multimodal networks for monocular depth prediction,” RA-L, vol. 6, no. 2, pp. 2822–2829, 2021. [34] J. Long, E. Shelhamer, and T. Darrell, “Fully convolutional networks for semantic segmentation,” in CVPR, 2015. [35] F. Yu and V. Koltun, “Multi-scale context aggregation by dilated convolutions,” in ICLR, 2016. [36] C. Peng, X. Zhang, G. Yu, G. Luo, and J. Sun, “Large kernel matters– Improve semantic segmentation by global convolutional network,” in CVPR, 2017. [37] M. Yang, K. Yu, C. Zhang, Z. Li, and K. Yang, “DenseASPP for semantic segmentation in street scenes,” in CVPR, 2018. [38] H. Zhao, J. Shi, X. Qi, X. Wang, and J. Jia, “Pyramid scene parsing network,” in CVPR, 2017. [39] Q. Hou, L. Zhang, M.-M. Cheng, and J. Feng, “Strip pooling: Rethinking spatial pooling for scene parsing,” in CVPR, 2020. [40] X. Wang, R. Girshick, A. Gupta, and K. He, “Non-local neural networks,” in CVPR, 2018. [41] Y. Yuan, L. Huang, J. Guo, C. Zhang, X. Chen, and J. Wang, “OCNet: Object context for semantic segmentation,” IJCV, vol. 129, no. 8, pp. 2375–2398, 2021. [42] Z. Huang, X. Wang, L. Huang, C. Huang, Y. Wei, and W. Liu, “CCNet: Criss-cross attention for semantic segmentation,” in ICCV, 2019. [43] Y. Liu, Y. Chen, P. Lasang, and Q. Sun, “Covariance attention for semantic segmentation,” TPAMI, vol. 44, no. 4, pp. 1805–1818, 2022.
+
+17
+
+[44] Z. Li, Y. Sun, L. Zhang, and J. Tang, “CTNet: Context-based tandem network for semantic segmentation,” TPAMI, 2021.
+[45] G. Lin, A. Milan, C. Shen, and I. Reid, “ReﬁneNet: Multi-path reﬁnement networks for high-resolution semantic segmentation,” in CVPR, 2017.
+[46] H. Zhang, K. Dana, J. Shi, Z. Zhang, X. Wang, A. Tyagi, and A. Agrawal, “Context encoding for semantic segmentation,” in CVPR, 2018.
+[47] C. Yu, J. Wang, C. Gao, G. Yu, C. Shen, and N. Sang, “Context prior for scene segmentation,” in CVPR, 2020.
+[48] Y. Yuan, X. Chen, and J. Wang, “Object-contextual representations for semantic segmentation,” in ECCV, 2020.
+[49] Z. Jin, T. Gong, D. Yu, Q. Chu, J. Wang, C. Wang, and J. Shao, “Mining contextual information beyond image for semantic segmentation,” in ICCV, 2021.
+[50] Z. Jin, B. Liu, Q. Chu, and N. Yu, “ISNet: Integrate image-level and semantic-level context for semantic segmentation,” in ICCV, 2021.
+[51] W. Wang, T. Zhou, F. Yu, J. Dai, E. Konukoglu, and L. Van Gool, “Exploring cross-image pixel contrast for semantic segmentation,” ICCV, 2021.
+[52] T. Takikawa, D. Acuna, V. Jampani, and S. Fidler, “Gated-SCNN: Gated shape CNNs for semantic segmentation,” in ICCV, 2019.
+[53] H. Ding, X. Jiang, A. Q. Liu, N. M. Thalmann, and G. Wang, “Boundary-aware feature propagation for scene segmentation,” in ICCV, 2019.
+[54] X. Li, X. Li, L. Zhang, G. Cheng, J. Shi, Z. Lin, S. Tan, and Y. Tong, “Improving semantic segmentation via decoupled body and edge supervision,” in ECCV, 2020.
+[55] H. Zhao, Y. Zhang, S. Liu, J. Shi, C. C. Loy, D. Lin, and J. Jia, “PSANet: Point-wise spatial attention network for scene parsing,” in ECCV, 2018.
+[56] Z. Zhu, M. Xu, S. Bai, T. Huang, and X. Bai, “Asymmetric non-local neural networks for semantic segmentation,” in ICCV, 2019.
+[57] X. Li, Z. Zhong, J. Wu, Y. Yang, Z. Lin, and H. Liu, “Expectationmaximization attention networks for semantic segmentation,” in ICCV, 2019.
+[58] S. Choi, J. T. Kim, and J. Choo, “Cars can’t ﬂy up in the sky: Improving urban-scene segmentation via height-driven attention networks,” in CVPR, 2020.
+[59] M. Yin, Z. Yao, Y. Cao, X. Li, Z. Zhang, S. Lin, and H. Hu, “Disentangled non-local neural networks,” in ECCV, 2020.
+[60] R. Strudel, R. Garcia, I. Laptev, and C. Schmid, “Segmenter: Transformer for semantic segmentation,” in ICCV, 2021.
+[61] E. Xie, W. Wang, Z. Yu, A. Anandkumar, J. M. Alvarez, and P. Luo, “SegFormer: Simple and efﬁcient design for semantic segmentation with transformers,” in NeurIPS, 2021.
+[62] W. Wang, E. Xie, X. Li, D.-P. Fan, K. Song, D. Liang, T. Lu, P. Luo, and L. Shao, “Pyramid vision transformer: A versatile backbone for dense prediction without convolutions,” in ICCV, 2021.
+[63] K. Li, Y. Wang, J. Zhang, P. Gao, G. Song, Y. Liu, H. Li, and Y. Qiao, “UniFormer: Unifying convolution and self-attention for visual recognition,” arXiv preprint arXiv:2201.09450, 2022.
+[64] N. Carion, F. Massa, G. Synnaeve, N. Usunier, A. Kirillov, and S. Zagoruyko, “End-to-end object detection with transformers,” in ECCV, 2020.
+[65] H. Wang, Y. Zhu, H. Adam, A. Yuille, and L.-C. Chen, “MaX-DeepLab: End-to-end panoptic segmentation with mask transformers,” in CVPR, 2021.
+[66] B. Cheng, A. G. Schwing, and A. Kirillov, “Per-pixel classiﬁcation is not all you need for semantic segmentation,” in NeurIPS, 2021.
+[67] X. Chu, Z. Tian, Y. Wang, B. Zhang, H. Ren, X. Wei, H. Xia, and C. Shen, “Twins: Revisiting the design of spatial attention in vision transformers,” NeurIPS, 2021.
+[68] Y.-H. Wu, Y. Liu, X. Zhan, and M.-M. Cheng, “P2T: Pyramid pooling transformer for scene understanding,” arXiv preprint arXiv:2106.12011, 2021.
+[69] R. Ranftl, A. Bochkovskiy, and V. Koltun, “Vision transformers for dense prediction,” in ICCV, 2021.
+[70] Y. Yuan, R. Fu, L. Huang, W. Lin, C. Zhang, X. Chen, and J. Wang, “HRFormer: High-resolution transformer for dense prediction,” in NeurIPS, 2021.
+[71] Y. Lee, J. Kim, J. Willette, and S. J. Hwang, “MPViT: Multi-path vision transformer for dense prediction,” in CVPR, 2022.
+[72] J. Jain, A. Singh, N. Orlov, Z. Huang, J. Li, S. Walton, and H. Shi, “SeMask: Semantically masked transformers for semantic segmentation,” arXiv preprint arXiv:2112.12782, 2021.
+[73] Y. Zhang, B. Pang, and C. Lu, “Semantic segmentation by early region proxy,” in CVPR, 2022.
+
+[74] H. Yan, C. Zhang, and M. Wu, “Lawin transformer: Improving semantic segmentation transformer with multi-scale representations via large window attention,” arXiv preprint arXiv:2201.01615, 2022.
+[75] F. Lin, Z. Liang, J. He, M. Zheng, S. Tian, and K. Chen, “StructToken : Rethinking semantic segmentation with structural prior,” arXiv preprint arXiv:2203.12612, 2022.
+[76] H. He, J. Cai, Z. Pan, J. Liu, J. Zhang, D. Tao, and B. Zhuang, “Dynamic focus-aware positional queries for semantic segmentation,” arXiv preprint arXiv:2204.01244, 2022.
+[77] D. Lin, R. Zhang, Y. Ji, P. Li, and H. Huang, “SCN: Switchable context network for semantic segmentation of RGB-D images,” IEEE Trans. Cybern., vol. 50, no. 3, pp. 1120–1131, 2020.
+[78] Z. Xiong, Y. Yuan, N. Guo, and Q. Wang, “Variational contextdeformable ConvNets for indoor scene parsing,” in CVPR, 2020.
+[79] Y. Su, Y. Yuan, and Z. Jiang, “Deep feature selection-and-fusion for RGB-D semantic segmentation,” in ICME, 2021.
+[80] Y. Qian, L. Deng, T. Li, C. Wang, and M. Yang, “Gated-residual block for semantic segmentation using RGB-D data,” T-ITS, 2021.
+[81] H. Zhou, L. Qi, H. Huang, X. Yang, Z. Wan, and X. Wen, “CANet: Co-attention network for RGB-D semantic segmentation,” PR, vol. 124, p. 108468, 2022.
+[82] Y. Sun, W. Zuo, and M. Liu, “RTFNet: RGB-thermal fusion network for semantic segmentation of urban scenes,” RA-L, vol. 4, no. 3, pp. 2576–2583, 2019.
+[83] C. Li, W. Xia, Y. Yan, B. Luo, and J. Tang, “Segmenting objects in day and night: Edge-conditioned CNN for thermal image semantic segmentation,” TNNLS, vol. 32, no. 7, pp. 3069–3082, 2020.
+[84] Y. Sun, W. Zuo, P. Yun, H. Wang, and M. Liu, “FuseSeg: Semantic segmentation of urban scenes based on RGB and thermal data fusion,” T-ASE, vol. 18, no. 3, pp. 1000–1011, 2021.
+[85] J. Xu, K. Lu, and H. Wang, “Attention fusion network for multi-spectral semantic segmentation,” PRL, vol. 146, pp. 179–184, 2021.
+[86] M. Blanchon, O. Morel, Y. Zhang, R. Seulin, N. Crombez, and D. Sidibe´, “Outdoor scenes pixel-wise semantic segmentation using polarimetry and fully convolutional network,” in VISAPP, 2019.
+[87] A. Kalra, V. Taamazyan, S. K. Rao, K. Venkataraman, R. Raskar, and A. Kadambi, “Deep polarization cues for transparent object segmentation,” in CVPR, 2020.
+[88] H. Mei, B. Dong, W. Dong, J. Yang, S.-H. Baek, F. Heide, P. Peers, X. Wei, and X. Yang, “Glass segmentation using intensity and spectral polarization cues,” in CVPR, 2022.
+[89] I. Alonso and A. C. Murillo, “EV-SegNet: Semantic segmentation for event-based cameras,” in CVPRW, 2019.
+[90] J. Zhang, K. Yang, and R. Stiefelhagen, “Exploring event-driven dynamic context for accident scene segmentation,” T-ITS, vol. 23, no. 3, pp. 2606–2622, 2022.
+[91] H. Rashed, S. Yogamani, A. El-Sallab, P. Krizek, and M. El-Helw, “Optical ﬂow augmented semantic segmentation networks for automated driving,” in VISAPP, 2019.
+[92] Z. Zhuang, R. Li, K. Jia, Q. Wang, Y. Li, and M. Tan, “Perceptionaware multi-sensor fusion for 3D LiDAR semantic segmentation,” in ICCV, 2021.
+[93] Y. Xing, J. Wang, and G. Zeng, “Malleable 2.5D convolution: Learning receptive ﬁelds along the depth-axis for RGB-D scene parsing,” in ECCV, 2020.
+[94] Z. Wu, G. Allibert, C. Stolz, and C. Demonceaux, “Depth-adapted CNN for RGB-D cameras,” in ACCV, 2020.
+[95] Y. Wang, W. Huang, F. Sun, T. Xu, Y. Rong, and J. Huang, “Deep multimodal fusion by channel exchanging,” in NeurIPS, 2020.
+[96] Y. Wang, F. Sun, M. Lu, and A. Yao, “Learning deep multimodal feature representation with asymmetric multi-layer fusion,” in MM, 2020.
+[97] Z. Zhang, Z. Cui, C. Xu, Y. Yan, N. Sebe, and J. Yang, “Pattern-afﬁnitive propagation across depth, surface normal and semantic segmentation,” in CVPR, 2019.
+[98] W. Hu, H. Zhao, L. Jiang, J. Jia, and T.-T. Wong, “Bidirectional projection network for cross dimension scene understanding,” in CVPR, 2021.
+[99] Y. Wang, W. Huang, F. Sun, F. He, and D. Tao, “Channel exchanging networks for multimodal and multitask dense image prediction,” arXiv preprint arXiv:2112.02252, 2021.
+[100] X. Zhang, S. Zhang, Z. Cui, Z. Li, J. Xie, and J. Yang, “Tube-embedded transformer for pixel prediction,” TMM, 2022.
+[101] R. Bachmann, D. Mizrahi, A. Atanov, and A. Zamir, “MultiMAE: Multi-modal multi-task masked autoencoders,” arXiv preprint arXiv:2204.01678, 2022.
+[102] J. Hu, L. Shen, and G. Sun, “Squeeze-and-excitation networks,” in CVPR, 2018.
+
+18
+
+[103] X. Li, Y. Hou, P. Wang, Z. Gao, M. Xu, and W. Li, “Trear: Transformerbased RGB-D egocentric action recognition,” TCDS, vol. 14, no. 1, pp. 246–252, 2022.
+[104] A. Kamath, M. Singh, Y. LeCun, G. Synnaeve, I. Misra, and N. Carion, “MDETR-modulated detection for end-to-end multi-modal understanding,” in ICCV, 2021.
+[105] Z. Liu, Y. Wang, Z. Tu, Y. Xiao, and B. Tang, “TriTransNet: RGB-D salient object detection with a triplet transformer embedding network,” in MM, 2021.
+[106] Z. Liu, Y. Tan, Q. He, and Y. Xiao, “SwinNet: Swin transformer drives edge-aware RGB-D and RGB-T salient object detection,” TCSVT, 2021.
+[107] A. Prakash, K. Chitta, and A. Geiger, “Multi-modal fusion transformer for end-to-end autonomous driving,” in CVPR, 2021.
+[108] L. Chen, H. Zhang, J. Xiao, L. Nie, J. Shao, W. Liu, and T.-S. Chua, “SCA-CNN: Spatial and channel-wise attention in convolutional networks for image captioning,” in CVPR, 2017.
+[109] Z. Shen, M. Zhang, H. Zhao, S. Yi, and H. Li, “Efﬁcient attention: Attention with linear complexities,” in WACV, 2021.
+[110] J. Li, A. Hassani, S. Walton, and H. Shi, “ConvMLP: hierarchical convolutional MLPs for vision,” arXiv preprint arXiv:2109.04454, 2021.
+[111] S. Gupta, R. Girshick, P. Arbela´ez, and J. Malik, “Learning rich features from RGB-D images for object detection and segmentation,” in ECCV, 2014.
+[112] R. Yan, K. Yang, and K. Wang, “NLFNet: Non-local fusion towards generalized multimodal semantic segmentation across RGB-depth, polarization, and thermal images,” in ROBIO, 2021.
+[113] G. Zhang, J.-H. Xue, P. Xie, S. Yang, and G. Wang, “Non-local aggregation for RGB-D semantic segmentation,” SPL, vol. 28, pp. 658– 662, 2021.
+[114] A. Dosovitskiy, G. Ros, F. Codevilla, A. Lopez, and V. Koltun, “CARLA: An open urban driving simulator,” in CoRL, 2017.
+[115] O. Russakovsky, J. Deng, H. Su, J. Krause, S. Satheesh, S. Ma, Z. Huang, A. Karpathy, A. Khosla, M. S. Bernstein, A. C. Berg, and L. Fei-Fei, “ImageNet large scale visual recognition challenge,” IJCV, vol. 115, no. 3, pp. 211–252, 2015.
+[116] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,” in ICLR, 2015.
+[117] X. Qi, R. Liao, J. Jia, S. Fidler, and R. Urtasun, “3D graph neural networks for RGBD semantic segmentation,” in ICCV, 2017.
+[118] S. Kong and C. C. Fowlkes, “Recurrent scene parsing with perspective understanding in the loop,” in CVPR, 2018.
+[119] Y. Cheng, R. Cai, Z. Li, X. Zhao, and K. Huang, “Locality-sensitive deconvolution networks with gated fusion for RGB-D indoor semantic segmentation,” in CVPR, 2017.
+[120] D. Lin, G. Chen, D. Cohen-Or, P.-A. Heng, and H. Huang, “Cascaded feature network for semantic segmentation of RGB-D images,” in ICCV, 2017.
+[121] S.-J. Park, K.-S. Hong, and S. Lee, “RDFNet: RGB-D multi-level residual feature fusion for indoor semantic segmentation,” in ICCV, 2017.
+[122] Y. Yue, W. Zhou, J. Lei, and L. Yu, “Two-stage cascaded decoder for semantic segmentation of RGB-D images,” SPL, vol. 28, pp. 1115– 1119, 2021.
+[123] F. Fooladgar and S. Kasaei, “Multi-modal attention-based fusion model for semantic segmentation of RGB-depth images,” arXiv preprint arXiv:1912.11691, 2019.
+[124] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for image recognition,” in CVPR, 2016.
+[125] A. Valada, R. Mohan, and W. Burgard, “Self-supervised model adaptation for multimodal semantic segmentation,” IJCV, vol. 128, no. 5, pp. 1239–1285, 2019.
+[126] A. Dai and M. Nießner, “3DMV: Joint 3D-multi-view prediction for 3D semantic scene segmentation,” in ECCV, 2018.
+[127] C. Hazirbas, L. Ma, C. Domokos, and D. Cremers, “FuseNet: Incorporating depth into semantic segmentation via fusion-based CNN architecture,” in ACCV, 2016.
+[128] W. Shi, D. Zhu, G. Zhang, J. Xu, X. Wang, L. Chen, J. Li, and X. Zhang, “Multilevel cross-aware RGBD indoor semantic segmentation for bionic binocular robot,” T-MRB, vol. 2, no. 3, pp. 382–390, 2020.
+[129] W. Shi, J. Xu, D. Zhu, G. Zhang, X. Wang, J. Li, and X. Zhang, “RGB-D semantic segmentation and label-oriented voxelgrid fusion for accurate 3D semantic mapping,” TCSVT, vol. 32, no. 1, pp. 183–197, 2022.
+[130] M. Orsic, I. Kreso, P. Bevandic, and S. Segvic, “In defense of pretrained ImageNet architectures for real-time semantic segmentation of road-driving images,” in CVPR, 2019.
+
+[131] F. Zhang, Y. Chen, Z. Li, Z. Hong, J. Liu, F. Ma, J. Han, and E. Ding, “ACFNet: Attentional class feature network for semantic segmentation,” in ICCV, 2019.
+[132] D. Xu, W. Ouyang, X. Wang, and N. Sebe, “PAD-net: Multi-tasks guided prediction-and-distillation network for simultaneous depth estimation and scene parsing,” in CVPR, 2018.
+[133] E. Romera, J. M. Alvarez, L. M. Bergasa, and R. Arroyo, “ERFNet: Efﬁcient residual factorized ConvNet for real-time semantic segmentation,” T-ITS, vol. 19, no. 1, pp. 263–272, 2018.
+[134] O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks for biomedical image segmentation,” in MICCAI, 2015.
+[135] J. He, Z. Deng, L. Zhou, Y. Wang, and Y. Qiao, “Adaptive pyramid context network for semantic segmentation,” in CVPR, 2019.
+[136] P. Wang, P. Chen, Y. Yuan, D. Liu, Z. Huang, X. Hou, and G. Cottrell, “Understanding convolution for semantic segmentation,” in WACV, 2018.
+[137] S. S. Shivakumar, N. Rodrigues, A. Zhou, I. D. Miller, V. Kumar, and C. J. Taylor, “PST900: RGB-thermal calibration, dataset and segmentation network,” in ICRA, 2020.
+[138] T. Pohlen, A. Hermans, M. Mathias, and B. Leibe, “Full-resolution residual networks for semantic segmentation in street scenes,” in CVPR, 2017.
+[139] C. Yu, J. Wang, C. Peng, C. Gao, G. Yu, and N. Sang, “Learning a discriminative feature network for semantic segmentation,” in CVPR, 2018.
+[140] ——, “BiSeNet: Bilateral segmentation network for real-time semantic segmentation,” in ECCV, 2018.
+[141] R. P. K. Poudel, S. Liwicki, and R. Cipolla, “Fast-SCNN: Fast semantic segmentation network,” in BMVC, 2019.
+[142] T. Wu, S. Tang, R. Zhang, and Y. Zhang, “CGNet: A light-weight context guided network for semantic segmentation,” TIP, vol. 30, pp. 1169–1179, 2021.
+[143] L.-C. Chen, Y. Zhu, G. Papandreou, F. Schroff, and H. Adam, “Encoderdecoder with atrous separable convolution for semantic image segmentation,” in ECCV, 2018.
+[144] T. Xiao, Y. Liu, B. Zhou, Y. Jiang, and J. Sun, “Uniﬁed perceptual parsing for scene understanding,” in ECCV, 2018.
+

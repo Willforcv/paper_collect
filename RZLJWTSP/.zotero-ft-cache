@@ -1,0 +1,3490 @@
+Article
+Reliable Graphs for SLAM
+Kasra Khosoussi1, Matthew Giamou1, Gaurav S Sukhatme2, Shoudong Huang3, Gamini Dissanayake3 and Jonathan P How1
+
+The International Journal of Robotics Research 1–39 Ó The Author(s) 2019 Article reuse guidelines: sagepub.com/journals-permissions DOI: 10.1177/0278364918823086 journals.sagepub.com/home/ijr
+
+Abstract Estimation-over-graphs (EoG) is a class of estimation problems that admit a natural graphical representation. Several key problems in robotics and sensor networks, including sensor network localization, synchronization over a group, and simultaneous localization and mapping (SLAM) fall into this category. We pursue two main goals in this work. First, we aim to characterize the impact of the graphical structure of SLAM and related problems on estimation reliability. We draw connections between several notions of graph connectivity and various properties of the underlying estimation problem. In particular, we establish results on the impact of the weighted number of spanning trees on the D-optimality criterion in 2D SLAM. These results enable agents to evaluate estimation reliability based only on the graphical representation of the EoG problem. We then use our findings and study the problem of designing sparse SLAM problems that lead to reliable maximum likelihood estimates through the synthesis of sparse graphs with the maximum weighted tree connectivity. Characterizing graphs with the maximum number of spanning trees is an open problem in general. To tackle this problem, we establish several new theoretical results, including the monotone log-submodularity of the weighted number of spanning trees. We exploit these structures and design a complementary greedy–convex pair of efficient approximation algorithms with provable guarantees. The proposed synthesis framework is applied to various forms of the measurement selection problem in resource-constrained SLAM. Our algorithms and theoretical findings are validated using random graphs, existing and new synthetic SLAM benchmarks, and publicly available real pose-graph SLAM datasets.
+Keywords SLAM, measurement selection, resource-constrained SLAM, estimation over graphs, pose-graph pruning, number of spanning trees, graph complexity
+
+1. Introduction
+Estimation-over-graphs (EoG) is a rich class of estimation problems that admit a natural graphical representation. In these problems, each vertex corresponds to an unknown state, and each edge corresponds to a noisy relative measurement between the corresponding states. Simultaneous localization and mapping (SLAM), synchronization problems over various groups, and sensor network localization are several notable examples of EoGs with important applications in robotics and sensor networks. An instance of EoG is often characterized by a measurement model, a graph G = (V, E), and a set of noisy measurements z : E ! M. The objective then is to find an optimal drawing of graph ^Á : V ! X in the state space X, consistent with the given measurement model and measurements (e.g., in the maximum likelihood (ML) sense). For example, in d-dimensional pose-graph SLAM (d 2 f2, 3g), both X and M correspond to the special Euclidean group SE(d). In this work, we explore and exploit the overlooked interplay between the graphical and estimation-theoretic facets of SLAM and several other EoGs.
+
+The graphical representation of EoGs provides a compact overview of the underlying estimation problem. In particular, graph connectivity is related to the notion of redundancy in estimation. Intuitively, an EoG with a wellconnected topology is expected to be more resilient to a fixed level of noise. A simple example is illustrated in Figure 1. This figure shows the ML estimates (MLEs) for two popular synthetic pose-graph SLAM datasets whose ground truths resemble grids. In this example, these
+1Laboratory for Information and Decision Systems (LIDS), Massachusetts Institute of Technology, Cambridge, MA, USA 2Department of Computer Science Viterbi School of Engineering, University of Southern California, Los Angeles, CA, USA 3Centre for Autonomous Systems (CAS), University of Technology Sydney, Sydney, Australia
+Corresponding author: Kasra Khosoussi, Laboratory for Information and Decision Systems (LIDS), Massachusetts Institute of Technology, Cambridge, MA 02139, USA. Email: kasra@mit.edu
+
+2
+
+The International Journal of Robotics Research 00(0)
+
+Figure 1. MLEs for two datasets with identical noise models. The bridges highlighted in the Manhattan dataset are indicative of its weak connectivity.
+
+datasets are regenerated with identical noise regimes. Estimation errors and confidence ellipses in City10K (left) are notably smaller than those in Manhattan (right). This difference can be attributed mainly to the better connectivity of the City10K dataset.
+Any well-defined graph connectivity measure must be monotone (i.e., non-decreasing) in the edge set. Therefore, graph connectivity can be maximized by simply adding all available edges to the graph (or, equivalently, collecting all possible measurements). Nevertheless, adding edges places a computational burden on the so-called back-end which is responsible for solving the underlying optimization problem. Thus, arbitrarily selecting new edges is not sustainable and prioritization based on information content is inevitable. This is especially important in the case of resourceconstrained platforms, where there is often a hard limit on the number of measurements that can be collected, processed, and utilized (see, e.g., Carlone and Karaman, 2017; Davison, 2005; Giamou et al., 2018; Huang et al., 2013; Paull et al., 2015; Tian et al., 2018).
+This paper aims to answer the following questions.
+1. Analysis: How precisely does the graph topology influence the underlying estimation problem?
+2. Synthesis: For a suitable connectivity measure that characterizes a certain aspect of estimation reliability, how can one design sparse, yet well-connected topologies that lead to a tractable (i.e., budget-feasible) and reliable estimation?
+Answering the first question enables us to characterize desirable graph topologies for an EoG problem such as SLAM from an intrinsic perspective and independent of any geometric aspects of the problem (i.e., realized measurements or a graph drawing). Subsequently, in the second question we seek to design efficient algorithms for synthesizing such graphs under sparsity constraints as a proxy for the resource constraints arising in solving the underlying estimation problem.
+In the SLAM literature, the impact of graph connectivity on estimation error is intuitively understood through
+
+the notion of loop closure ‘‘size.’’ Closing a ‘‘larger’’ loop is preferred over closing ‘‘smaller’’ loops as it reduces more of the uncertainty in a robot’s belief over its trajectory and the map (Bailey and Durrant-Whyte, 2006). We formalize this intuition by relating different measures of graph connectivity to several aspects of estimation reliability. Aside from presenting novel insights into an overlooked aspect of SLAM, our theoretical developments ultimately provide us with a unique set of tools for reasoning about estimation error based only on the topology of the underlying graph G, i.e., without knowing the realized measurements, any particular drawing of the graph, or solving the inference problem. This is in contrast to the generic estimation-theoretic approach, in which the graphical facet of the EoG problem is neglected, and instead, the Fisher information matrix (FIM) is computed by evaluating the Jacobian at the current MLE of, e.g., a robot’s trajectory. In comparison, the proposed graph-theoretic framework is robust to common convergence issues and linearization errors by virtue of not depending on a specific (estimated or nominal) trajectory, and demands less computational efforts by not requiring the solution of the resulting optimization problem and operating on a minimal representation of the problem. It is also more flexible when planning over longer horizons because it is independent of any particular metric realization of (current and/or future) trajectories and measurements.
+The motivation behind our work originates from the work of Olson and Kaess (2009), where they insightfully highlighted the crucial role played by graph connectivity in SLAM. Olson and Kaess (2009) empirically observed that as the average degree in pose graphs increases, the value of the log-likelihood cost function at the MLE approaches its value at ground truth. We start our analysis by presenting a formal explanation for this observation. We then establish a connection between the graph Laplacian matrix and the FIM, which fully characterize, respectively, the graphical and estimation-theoretic facets of EoGs. This insight enables us to establish stronger links between the two aspects of SLAM based on the algebraic connectivity (Godsil and Royle, 2001) (Fiedler value) and the weighted
+
+Khosoussi et al.
+
+3
+
+number of spanning trees (WST). Among the existing combinatorial and spectral graph connectivity criteria, the number of spanning trees (sometimes referred to as graph complexity or tree connectivity) stands out: despite its combinatorial origin, it can also be characterized solely by the spectrum of the graph Laplacian (Godsil and Royle, 2001). As we shall see in this paper, tree connectivity is strongly tied to the standard D-optimality criterion (D-criterion for short), defined as the determinant of the (asymptotic) ML estimator covariance matrix. Consequently, one can accurately estimate the determinant of the estimation error covariance matrix using only the topology of the (weighted) graph underneath.
+Based on the insight highlighted above, we address the second question, i.e., minimizing the determinant of the estimation error covariance in SLAM while maintaining computational tractability through the synthesis of sparse graphs with maximum tree connectivity. In particular, we tackle several forms of the measurement selection problem in which one seeks to select a D-optimal ksubset of loop closures. This problem has been studied extensively in the recent SLAM literature (see, e.g., Davison, 2005; Huang et al., 2013; Ila et al., 2010; Kaess and Dellaert, 2009). However, here we take a rather different graph-theoretic approach by exploiting the aforementioned connection between tree connectivity and D-optimality.
+Graphs with the maximum number of spanning trees among a family of graphs with the same vertex set are called t-optimal. The problem of characterizing unweighted t-optimal graphs among the set of graphs with n vertices and m edges remains open and has been solved only for specific pairs of n and m (see, e.g., Cheng, 1981; Kelmans, 1996; Petingi and Rodriguez, 2002; Shier, 1974). The span of these special cases is too narrow for the types of graphs that typically arise in SLAM and related applications. Furthermore, the (n, m) constraint is usually insufficient for describing the true set of (physically) realizable graphs and cannot capture implicit physical and operational constraints that exist in these problems. Finally, it is not immediately clear how these results can be extended to the case of (edge) weighted graphs. The edge weights are essential parts of EoGs as they reflect the precision or information (i.e., inverse of variance) of the corresponding measurements. We address these challenges by proposing a pair of approximation algorithms with provable guarantees and near-optimality certificates.
+In this paper, we extend the theoretical results presented in Khosoussi et al. (2014) and Khosoussi et al. (2016a) on the connection between the WST and the D-criterion. Moreover, this work extends the algorithms and theoretical results presented by Khosoussi et al. (2016b) to new formulations, and show how our approach can be used for D-optimal measurement selection in several scenarios. Finally, in this paper we provide an extensive experimental evaluation and validation based on real and synthetic datasets.
+
+1.1. Outline
+Section 2 provides a mathematical formulation of SLAM and several related EoG problems. We provide answers to the above-mentioned analysis question by linking different measures of graph connectivity to various aspects of estimation reliability in Section 3. Subsequently, in Section 4 we tackle the synthesis question and formally define the edge selection problem (ESP) for designing sparse graphs with the maximum weighted tree connectivity. In Section 5, we develop a pair of approximation algorithms for solving the synthesis problem. The proposed framework is extended to more general settings in Sections 6 and 7. In Section 8, we show how our graph-theoretic framework can be applied to various measurement selection problems in SLAM. In Section 9, we evaluate the performance of our algorithms on both synthetic graphs and real benchmark datasets. Section 10 concludes the paper. In addition, for the reader’s convenience Appendix A provides a brief review of the terminology and a number of results from estimation theory, linear algebra, and spectral graph theory. Appendix B is where we present the proofs.
+
+1.2. General notation
+
+Throughout this paper, bold lower-case and upper-case let-
+
+ters are reserved for vectors and matrices, respectively. The standard basis for Rn is denoted by feigni = 1 where n is usu-
+ally clear from the context. Sets are shown by upper-case
+
+letters. jXj denotes the cardinality of set X. For any finite
+
+set W,
+
+W k
+
+is the set of all k-subsets of W. We often
+
+use ½n to denote the set fi 2 N : i ł ng. The eigenvalues
+
+of symmetric matrix M are denoted by
+
+lmin(M) = l1(M) ł Á Á Á ł ln(M) = lmax(M). Here 1, I and 0 denote the vector of all ones, the identity, and the
+
+zero matrices with appropriate sizes, respectively. We use
+
+S1 1 S2 (respectively S1 # S2) to indicate that S1 À S2 is positive definite (respectively positive semidefinite). We
+
+use k Á k to denote the Euclidean norm, and the weighted
+
+Euclidean norm of vector e with respect to matrix W 1 0
+
+is
+
+denoted
+
+by
+
+k
+
+ekW
+
+¼D
+
+pﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ e We.
+
+Here
+
+Sn.0
+
+and
+
+Snø 0
+
+denote
+
+the sets of positive definite and positive semidefinite n × n
+
+matrices, respectively. The Kronecker product is denoted
+
+by . The block-diagonal matrix whose main diagonal
+
+blocks are W1, . . . , Wk is denoted by diagðW1, . . . , WkÞ.
+
+2. EoG problems
+In this section, we mathematically formulate SLAM and two other classes of EoG problems. For each problem, we compute the FIM. It will soon become clear that the graph Laplacian is closely related to the FIM in these problems. The connection between the Fisher information and Laplacian matrices enables us to study the impact of graph topology on estimation in the following sections.
+
+4
+
+The International Journal of Robotics Research 00(0)
+
+2.1. Synchronization over Rd
+
+Synchronization over Rd (Rd-Sync) is one of the simplest
+
+classes of linear-Gaussian EoG problems. Rd-Sync is a gen-
+
+eralization of the time-synchronization problem in sensor
+
+networks represent
+
+(see Barooah the unknown
+
+satantdesHaensdpafnzhiga,mi =2100re7p).reLseent tfrxeilgatnii=ve1
+
+pairwise noisy measurements where both xi and zi belong to
+
+Rd. In Rd-Sync, the pairwise measurement between xi and
+
+xj is generated according to the following simple model,
+
+zij = xi À xj + eij, (i, j) 2 E
+
+ð1Þ
+
+in which eij is a zero-mean Gaussian noise.
+
+Assumption 1. Let ei be the noise corrupting the ith measurement. We assume that (i) Cov½ei, ej = 0d × d for i 6¼ j and (ii) ei ; N(0, s2i Id).
+Rd-Sync with n variables can be naturally represented by a graph G = (½n, E), in which (i) variable xi is represented by the vertex i 2 ½n, (ii) relative measurement zij is represented by the edge fi, jg 2 E, and (iii) edges are weighted
+by the precision (inverse of variance) of the corresponding measurements, i.e., w : E ! R.0 : ek 7! sÀk 2. Owing to the relative nature of measurements, ML estimation in Rd-Sync is ill-posed unless we anchor a vertex. Let A be the reduced
+incidence matrix of G (see Appendix A.1). Furthermore, let x and z denote the stacked vectors of states after anchoring
+an arbitrary vertex and measurements, respectively. The
+measurement model can be written as
+
+z = (A  Id)Tx + e
+
+ð2Þ
+
+in which e ; N(0, S) is the stacked vector of measurement noise. It is easy to verify that SÀ1 = W  Id where
+
+W ¼D diag(w(e1), . . . , w(em))
+
+ð3Þ
+
+Proposition 1. (Barooah and Hespanha, 2007). The FIM in Rd-Sync is given by I = Lw  Id in which Lw is the reduced weighted Laplacian matrix of G.
+Remark 1. The ML estimator in Rd-Sync, as a linearGaussian estimation problem, is unbiased and efficient (i.e., achieves the Crame´r–Rao lower bound (CRLB)).
+
+2.2. Compass-SLAM
+
+Compass-SLAM is a simplified SLAM problem in which
+
+the robot orientation is assumed to be known, e.g., using a
+
+‘‘compass’’. Duckett et al. (2000, 2002) proposed one of the
+
+early SLAM algorithms based on this model. The goal in
+
+Compass-SLAM is to estimate the robot and potentially land-
+
+marks’ positions in Rd (d 2 f2, 3g), translational measurements fzigmi = 1.
+
+fpigni = 1 using noisy This simplification
+
+reduces the ML estimation in SLAM to a linear-Gaussian
+
+estimation problem, whose globally-optimal solution can be
+
+computed easily by solving a linear least squares problem.
+
+Remark 2. The ML estimator in Compass-SLAM, as a linear-Gaussian estimation problem, is unbiased and efficient.
+
+The underlying structure of Compass-SLAM can be represented by a graph similar to Rd-Sync. Let R be a block-diagonal matrix, consisting of fRigmi = 1 in which Ri 2 SO(d) is the rotation matrix corresponding to the
+robot orientation making the ith observation, i.e.,
+
+R ¼D diag(R1, . . . , Rm)
+
+ð4Þ
+
+Let p and z be the stacked vector of robot and potentially landmarks’ positions and translational measurements. After anchoring an arbitrary vertex, the measurement model in Compass-SLAM can be expressed as
+
+z = RT(A  Id)Tp + e
+
+ð5Þ
+
+in which A is the reduced incidence matrix of G and e ; N(0, S) is the measurement noise.
+
+Assumption 2. Let ei be the noise affecting the ith measurement. We assume that (i) Cov½ei, ej = 0d × d for i 6¼ j and (ii) ei ; N(0, s2i Id).
+Proposition 2. The FIM in Compass-SLAM is given by I = Lw  Id in which Lw is the reduced weighted Laplacian matrix of G.
+
+2.3. SLAM
+
+This section mainly concerns the 2D pose-graph SLAM
+
+ipsroxbl¼DemÂpwiuth
+
+Ãrelative-pose measurements.1 The state vector , and z = ½zp zu  is the stacked vector of
+
+translational and rotational measurements. The measure-
+
+ment model can be expressed as
+
+z = h(x) + e
+
+ð6Þ
+
+in which e ; N(0, S). The measurement function h, after computing the correct regularization terms for the rotational component of measurements (Carlone, 2013; Carlone et al., 2014; Carlone and Censi, 2014), is given by
+
+!
+
+!!
+
+h(x) ¼D
+
+hp(x) hu(u)
+
+=
+
+R (A  I2) 0
+
+0 A
+
+p u
+
+ð7Þ
+
+We make the following assumption regarding the structure of the noise covariance matrix.
+Assumption 3. We assume the rotational and translational measurements in SLAM are corrupted by block-isotropic noise, i.e., the noise covariance matrix S can be written as S = diag(Sp, Su), where
+
+Sp = diag(s2p1 I2, . . . , s2pm I2)
+
+ð8Þ
+
+Su = diag(s2u1 , . . . , s2um )
+
+ð9Þ
+
+According to (78), for p(z; x) = N(z; h(x), S) the FIM is given by
+
+I(x) = J(x)TSÀ1J(x)
+
+ð10Þ
+
+Khosoussi et al.
+
+5
+
+where J(x) ¼D ∂h(x)=∂x. The Jacobian matrix J(x) can be easily computed:
+
+"
+
+#
+
+J(x) ¼D ∂h(x) = ∂x
+
+Jpp Jup
+
+Jpu Juu
+
+ð11Þ
+
+Jpp
+
+¼D
+
+∂hp ∂p
+
+=R
+
+(A  I2)
+
+ð12Þ
+
+Jpu
+
+¼D
+
+∂hp ∂u
+
+=
+
+Re D
+
+ð13Þ
+
+Jup
+
+¼D
+
+∂hu ∂p
+
+=0
+
+ð14Þ
+
+Juu
+
+¼D
+
+∂hu ∂u
+
+=A
+
+ð15Þ
+
+Here Re is defined as Re ¼D GR in which G is given by
+
+!
+
+G ¼D Im 
+
+0 À1
+
+1 0
+
+ð16Þ
+
+It is easy to verify that G G = R R = Re Re = I; in fact, G 2 SO(2m). The other new term, D 2 R2m × n, has the fol-
+
+lowing structure: for each ek 2 E, (D)2kÀ1:2k, ik = pjk À pik where ik is the index of the node observing the jkth node in
+the kth measurement. Other entries in D are all zero. As noted by Carlone (2013), D ¼D D D is a diagonal matrix
+
+with the following structure: Di, i is equal to the sum of
+
+squared distances between the ith robot pose and every
+
+node observed by it:
+
+X
+
+Di, i =
+
+k pi À pjk2
+
+j2Nout(i)
+
+ð17Þ
+
+where Nout(v) is the set of nodes observed by v 2 V. Now
+
+we can compute the FIM I(x):
+
+"
+
+#
+
+I(x) =
+
+Lwp  I2 Ã
+
+(Awp  I2)GDwp Lwu + Dwp Dwp
+
+ð18Þ
+
+function of the underlying graph structure. To simplify our notation, let xH and x8 be the MLE and the true value
+
+of x, respectively. Olson and Kaess (2009) investigated
+
+the ratio between the minimum of the log-likelihood objective function f H ¼D f (xH), and its value at the true x, f 8 ¼D f (x8). Figure 1 illustrates these values in a toy example. Define g ¼D f H=f 8. It is easy to see that (i) 0 ł g ł 1 and (ii) g ! 1À as xH ! x8. Therefore, g ’ 1 indicates
+
+that the MLE is close to the ground truth in objective
+
+value. Using Monte Carlo simulations, Olson and Kaess
+
+(2009) degree
+
+empirically observed of the graph, i.e., d ¼D
+
+1thPatn as
+n i=1
+
+the average node deg (i) increases, g
+
+on average approaches 1 (see Olson and Kaess, 2009:
+
+Figure 5). According to their interpretation, g is a ‘‘coarse
+
+measure of overfitting’’ (Olson and Kaess, 2009). We
+
+repeated their experiment and observed the same beha-
+
+vior. The blue points in Figure 2 correspond to the aver-
+
+age of g in a series of Monte Carlo simulations over a
+
+large number of randomly generated SLAM problems
+
+with different average degrees (similar to Figure 5 in
+
+Olson and Kaess, 2009). For each random pose-graph, we
+
+generated 50 independent and identically distributed rea-
+
+lizations of measurement noise. We then computed g for
+
+each realization of noise, and averaged it over the 50
+
+Monte Carlo simulations. In what follows we provide a
+
+theoretical explanation for this empirical observation.
+
+Assumption 4 (Additive Gaussian noise). We assume that
+
+measurements are corrupted by an additive Gaussian noise,
+
+i.e., z = h(x8) + e in which z is the measurement, h is the
+
+measurement
+
+function
+
+and
+
+e
+
+;
+
+N(0,
+
+S)
+
+is
+
+the
+
+2
+noise.
+
+The negative log-likelihood cost function for the model
+
+specified in Assumption 4 can be written as
+
+f (x) = k z À h(x) k2SÀ1 . To compute g, we need to compute both f H and f 8. According to the definition, f 8 is the
+
+value of the negative log-likelihood at x = x8. Note that
+
+f 8 ¼D f (x8) is a random variable as it depends on z, and
+
+in which Ã denotes the top-right block; Lwp and Lwu are
+
+the reduced weighted Laplacian matrices of G when edges
+
+are weighted according to wp : ek 7! sÀpk2 and wu : ek 7! sÀuk2,
+
+respectively; based on wp
+
+;
+
+Wp Awp
+
+is ¼D
+
+thpe ﬃdﬃﬃiﬃaﬃﬃﬃgonal matrix of A Wp is the reduced
+
+edge weights weighted inci-
+
+adbeonvcee;mDatwrpix¼Dopf GﬃWﬃﬃﬃwﬃpﬃﬃDhe;n
+
+edges are weighted and Dwp ¼D Dwp Dwp
+
+by is
+
+wp defined a diagonal
+
+matrix with the following structure:
+
+f (x)
+
+X
+
+Dwp i, i =
+
+wp(i, j) k pi À pjk2
+
+ð19Þ
+
+f°
+
+j2Nout(i)
+
+f
+
+3. Topology and estimation reliability
+3.1. Average degree
+We now demonstrate that the ratio between the value of the log-likelihood cost function evaluated at the true value and the MLE can be accurately approximated by a simple
+
+x
+
+x°
+
+x
+
+Figure 2. Here f (drawn in black) is a pictorial representation of the negative log-likelihood objective function. The MLE xH and the ground truth x8, together with their objective values, are
+specified.
+
+6
+
+The International Journal of Robotics Research 00(0)
+
+consequently e. The following proposition gives the distribution of f 8.
+Proposition 3. Under Assumption 4, f 8 ; x2n8 in which n8 = dim (z).
+According to Proposition 3, f 8 follows a x2n8 distribution with dim (z) degrees of freedom. Now let us examine the behavior of f H ¼D f (xH). Note that xH depends on z and therefore is a random variable. Consequently, f H, as a function of xH and z, is also a random variable. The following well-known result provides the distribution of f H when the measurement function is affine in x.
+Proposition 4. Under Assumption 4 and for linear measurement models we have f H ; x2nH in which nH = dim (z) À dim (x).
+Proposition 4 characterizes the distribution of f H for
+affine measurement functions corrupted by additive
+Gaussian noise (Assumption 4). It is impossible to analytically characterize the distribution of f H for general (non-
+linear) measurement functions. However, we can always
+linearize sufficiently smooth nonlinear measurement functions using the first-order Taylor expansion around x = x8.
+Given a sufficiently small linearization error, one can use Proposition 4 to approximate the distribution of f H.
+According to Proposition 3 and Proposition 4, the distribution of f 8 and f H is determined by the size of z and x. For example, in 2D pose graphs we have n8 = 3m and nH = 3(m À n). Ee ; N(0, S)½g can be roughly approximated by
+
+Ee ; N(0, S)½g
+
+’
+
+Ee ; N(0, S)½f H Ee ; N(0, S)½f 8
+
+ð20Þ
+
+nH
+
+’
+
+ð21Þ
+
+n8
+
+=1À n
+
+ð22Þ
+
+m
+
+The rough approximation made in (20) can be justified by the first-order Taylor expansion of g = f H=f 8 at f H = Ee ; N(0, S)½f H ’ nH and f 8 = Ee ; N(0, S)½f 8 = n8; this na¨ıve approximation is introduced only to reproduce the
+aforementioned empirical observations (Olson and Kaess,
+2009), as we will see shortly in Figure 3.
+Using the handshaking lemma, we can express (22) in
+terms of the average degree of the graph, i.e.,
+
+Ee ; N(0, S)½g ’ 1 À 2=d
+
+ð23Þ
+
+Equation (23) reveals the relation between the expected value of g, as a measure of estimation accuracy, and the average node degree d, as the simplest measure of graph connectivity. According to (23), as the average degree increases, g in expectation approaches 1, which indicates an accurate MLE. The red points in Figure 3 are drawn according to (23). According to this figure, (23) is consistent with our and Olson and Kaess’s (2009) empirical
+
+1
+
+0.8
+
+0.6
+
+γ
+
+0.4
+
+0.2
+
+0
+
+0
+
+5
+
+10
+
+15
+
+20
+
+25
+
+30
+
+35
+
+40
+
+Average node degree ( d¯)
+
+Figure 3. Average of g in 50 Monte Carlo simulations for
+
+different average node degrees (blue). Estimated value of
+
+E½g
+
+’
+
+1
+
+À
+
+2 d
+
+(red).
+
+observations regarding the average value of g (blue points in Figure 3).
+The average degree is proportional to the ratio between the number of (vector-valued) measurements (e.g., odometry and loop-closure measurements) and the number of (vector-valued) variables (e.g., robot poses). Therefore, for a fixed number of poses, maximizing the average degree is equivalent to merely maximizing the number of measurements. The average degree, as a connectivity measure, is insensitive to topological differences between graphs with the same number of edges (per vertices). Hence, although (23) is consistent with the empirical results, d is not sophisticated enough to capture and reflect the differences between graph structures with the same number of measurements. Nonetheless, our analysis provides an insight into how making new observations ultimately leads to a more precise estimate in terms of the value of the loglikelihood function.
+3.2. Algebraic Connectivity
+Now we present another result on how in Rd-Sync and Compass-SLAM, a ‘‘well-connected’’ graph is necessary for achieving reliable estimates. The following remark sets the stage for our main result.
+Remark 3. Let Cov½e 1 0 be a n × n estimation error covariance matrix in which e 2 Rn denotes the estimation error. Let lmax ¼D ln(Cov½e) be the largest eigenvalue of Cov½e. The following statements hold regarding lmax:
+1. lmax specifies the worst-case variance among all unit directions (Joshi and Boyd, 2009);
+2. geometrically speaking, if Cov½e is the covariance matrix of a Gaussian distribution, the ‘‘hyperdiameter’’ opfﬃﬃﬃtﬃﬃhﬃﬃeﬃﬃ uncertainty hyperellipsoid is determined by lmax.
+In the optimal experimental design literature, the design that minimizes the largest eigenvalue of the estimation
+
+Khosoussi et al.
+
+7
+
+error covariance matrix is known as the E-optimal (eigenvalue-optimal) design (Pukelsheim, 1993). For any simple connected undirected graph G, the second-largest eigenvalue of the (weighted) Laplacian matrix l2(Ls).0 is known as the algebraic connectivity (or Fiedler value) of G; see Appendix A.1. A closely related quantity is the smallest eigenvalue of the reduced Laplacian l1(L) which also reflects graph connectivity as shown by the following proposition as shown by the following proposition.
+Proposition 5. Let L be the reduced Laplacian matrix of simple undirected graph G. The following statements hold:
+
+1. 0 ł lmin(L) ł 1;
+
+2. lmin(L) = 0 iff G is disconnected and lmin(L) = 1 is
+
+maximum iff G is complete;
+
+3. lmin(L) is monotone in the edge set of the graph; i.e.,
+
+adding a new edge to G cannot decrease lmin(L);
+
+4. (Pirani and Sundaram, 2014): let w : E(G) ! R.0 be
+
+a weight function and Lw be the reduced Laplacian of
+
+hGoaldftserthaantchlomrinin(Lg wv)0łwwithmz aexd,gwe hweereighwtzms agxiv¼Denmbayxwu ;;
+
+it
+v0
+
+w(v0, u).
+
+The following theorem sheds light on the connection
+between the algebraic connectivity, the smallest eigenvalue
+of the reduced Laplacian of the graph, and the worst-case estimation error variance in Rd-Sync and Compass-SLAM.
+
+Theorem 1 (Algebraic connectivity and worst-case error
+
+variance). Let Cov½xH be the estimation error covariance
+
+matrix of the ML estimator in Rd-Sync and Compass-
+
+SLAM. matrix.
+
+Let Lsw Then
+
+be the we
+
+corresponding weighted Laplacian have lmax(Cov½xH) = lÀ1 1(Lw).
+
+Furthermore, it holds:
+
+lmax(Cov½xH) ø 1=l2(Lsw)
+
+ð24Þ
+
+lmax(Cov½xH) ø 1=wmz ax
+
+ð25Þ
+
+Theorem 1 states that the worst-case estimation error variance in Rd-Sync and Compass-SLAM can be expressed in terms of graph connectivity as captured by l1(Lw). It also shows that reducing the worst-case estimation error variance in these EoG problems requires suffi-
+claiergnetlywzmstarxong(i.ea.,lgeabrhaiicgh-cpornenceiscitoivnitymeaansdureamesunftfictoientthlye anchored node). According to Pirani and Sundaram (2014),
+(25) provides a tighter bound than (24). Needless to say,
+scaling the information content (precision) of every edge scales lmax(Cov½xH), l1(Lw), and l2(Lsw) by the same amount.
+
+3.3. Tree connectivity
+In what follows we demonstrate that the weighted number of spanning trees, as a measure of graph connectivity (see Appendix A.1), has a significant impact on the determinant of the estimation error covariance of the ML estimator in
+
+several EoG problems, including SLAM. The D-criterion provides a scalar measure of the uncertainty encoded in a covariance matrix. In particular, the square root of the determinant of the covariance matrix is proportional to the hypervolume of the confidence hyperellipsoids in multivariate Gaussian distributions (see Joshi and Boyd, 2009). Furthermore, from an information-theoretic standpoint, the log-determinant of the covariance matrix of a multivariate Gaussian random variable is proportional to its differential entropy up to an additive constant.
+Before presenting our main results, we point out several standard numerical tricks that are crucial for handling large problems. First, note that minimizing det Cov½xH is equivalent to minimizing log det Cov½xH; however, we directly compute the latter in order to avoid overflow and underflow. Similarly, rather than working with the weighted number of spanning trees tw(G) = det Lw (Theorem 12), we often use the weighted tree connectivity as defined in the following.
+
+Definition 1 (Tree connectivity). The tree connectivity of graph G is formally defined as
+
+&
+
+t(G) ¼D
+
+log t(G) 0
+
+if G isconnected otherwise
+
+ð26Þ
+
+Similarly, for graphs weighted by a positive weight function w : E(G) ! R.0 (sometimes, for convenience and without loss of generality, w : E(G) ! R ø 1), the weighted tree connectivity is defined as
+
+&
+
+tw(G) ¼D
+
+log tw(G) if G isconnected
+
+0
+
+otherwise
+
+ð27Þ
+
+In SLAM and many other real-world EoGs, the Laplacian and the Fisher information matrices are sparse. Algorithm 1 outlines a standard procedure for efficiently computing the log-determinant of sparse positive-definite matrices. Unlike the Fisher information matrix, the covariance matrix in SLAM is generally dense. Therefore, in practice log det Cov½xH is computed indirectly via log det I(x):
+
+log det Cov½xH ’ log det I(xH)À1
+
+ð28Þ
+
+= À log det I(xH)
+
+ð29Þ
+
+In the worst case of dense matrices, log-determinant can be computed in O(n3) time where n is the number of poses.
+
+Algorithm 1. log det (S) for a sparse S 1 0
+1: function LogDetðSÞ 2: // Choose a fill-reducing permutation heuristic P 3: P COLAMD(S) 8 e.g., column approximate
+minimum degree 4: // Sparse Cholesky factor C s.t. S = CC 5: C SpaPrseCholesky(PSP ) 6: return 2 i log Ci, i 7: end function
+
+8
+
+The International Journal of Robotics Research 00(0)
+
+Nonetheless, in many practical sparse scenarios that arise in robotics, Algorithm 1 performs much faster given a sufficiently good fill-reducing permutation. Now we are ready to present our main results.
+Theorem 2 (D-optimal Rd-Sync and Compass-SLAM). In Rd-Sync and d-dimensional Compass-SLAM we have
+
+log det (Cov½xH) = À dtw(G)
+
+ð30Þ
+
+in which the edge weights are given by the precision of the corresponding measurements (see Section 2).
+Theorem 2 states that in Rd-Sync and Compass-SLAM, under the specified assumptions, maximizing the WST in the underlying graph is equivalent to minimizing the hypervolume of uncertainty ellipsoids, and maximizing the Dcriterion. Graphs with the maximum (weighted) number of spanning trees among a family of graphs are called t-optimal. Theorem 2 suggests that D-optimality and t-optimality are indeed equivalent under the above-mentioned assumptions. Now we extend Theorem 2 to SLAM.
+
+Theorem 3. Consider the SLAM problem (Section 2.3) and let n be the number of poses, d ¼D k DTwp Dwp k‘, and l1 ¼D lmin(Lwu ). Also define ‘t(G) ¼D 2twp (G) + twu (G) and
+(x) ¼D log det I(x) À ‘t(G). Then we have
+
+0 ł (x) ł n log (1 + d=l1)
+
+ð31Þ
+
+Note that ‘t(G) ¼D 2twp (G) + twu (G) only depends on the weighted tree connectivity of the underlying graph. The above theorem gives lower and upper bounds for the gap
+(x) between ‘t(G) and the actual D-criterion. More specifically, Theorem 3 states that ‘t(G) is a universal graphical lower bound on the D-criterion for any trajectory x or particular realization of measurements z. Therefore, ‘t(G) can be used as a special graphical surrogate function for maximizing the D-criterion in SLAM whenever, e.g., a reliable estimate of the geometry x is not available (we discuss a number of examples in the second part of this paper). Theorem 3 also shows that the gap between the D-criterion and its graphical lower bound ‘t(G) is bounded. Now let us focus on this upper bound. From (19) we know that d is the maximum weighted sum of squared distances between a pose and any other pose observed by it, i.e.,
+
+(
+
+)
+
+X
+
+d = max
+i2½n
+
+wp(i, j) k pj À pik2
+j2Nout(i)
+
+ð32Þ
+
+Thus, d depends on a number of factors such as sensor characteristics (e.g., sensing range and field of view), the distance between consecutive poses (odometry), and the precision of translational measurements wp. The other parameter that appears in Theorem 3 is the smallest eigenvalue of Lwu . From Proposition 5 recall that l1 is (i) positive iff the graph is connected (which is the case in SLAM), (ii) monotone in the edge set, and (iii) bounded by the
+
+maximum precision among all rotational measurements connected to the anchored node. In addition, scaling the rotational weights wu scales l1 by the same factor. Corollary 1 follows directly from Theorem 3.
+Corollary 1. We have
+
+lim
+d=l1 !0+
+
+log
+
+det
+
+I(x)
+
+=
+
+2twp
+
+(G)
+
++
+
+t
+
+wu
+
+(G)
+
+ð33Þ
+
+This corollary implies the asymptotic tightness of our graphical lower bound ‘t(G) on the D-criterion, i.e., the approximation gap (x) vanishes as d=l1 approaches zero. SLAM problems may approach this asymptotic regime as discussed above.
+In the rest of this section we explore the implications of Theorem 3 in the special case of isotropic rotational and translational measurement noise.
+
+Corollary 2. Suppose the covariance matrix for rotational
+
+and translational measurements is isotropic, i.e., Sp = s2pI
+
+and Su reduced
+
+= s2uI. Let Laplacian
+
+l~1 and
+
+be the smallest eigenvalue of the ~d ¼D k DTDk‘. Under the following
+
+condition, the gap is guaranteed to be (x) ł a Á n:
+
+s2u=s2p ł ( exp (a) À 1)l~1=~d
+
+ð34Þ
+
+’ al~1=~d, for a ’ 0
+
+ð35Þ
+
+Corollary 3. Suppose the covariance matrix for rotational and translational measurements is isotropic. Let I(xjT) be the FIM associated to an arbitrary spanning tree, e.g., the odometry subgraph. Then,
+
+lim log det I(x) À log det I(xjT) = 3t(G) ð36Þ
+d=l1 !0+
+
+A natural choice for T is the odometry spanning tree Todo. In this case, Dinf(G) ¼D log det I(x)À log det I(xjTodo) can be interpreted as the information gained by closing loops as compared with the deadreckoning scenario. According to Corollary 3, Dinf(G) will be proportional to the tree connectivity of G when d=l1 is sufficiently small. The following corollary directly follows from Corollary 3 and Cayley’s formula (see Theorem 11).
+Corollary 4. In the SLAM problem defined in Section 2.3 with isotropic noise we have
+
+lim Dinf(Kn) = 3(n À 2) log (n)
+
+ð37Þ
+
+d=l1 !0+
+
+Theorems 2 and 3 establish a basis for comparing the graphical structure of different instances of EoG problems based on their number of spanning trees. It is important to note that two graphs are comparable based on tree connectivity only if they have the same number of vertices. For a fair comparison of the tree connectivity of graphs with a different number of vertices, we need to somehow normalize the absolute tree connectivity by the graph size.
+
+Khosoussi et al.
+
+9
+
+Definition 2 (Normalized tree connectivity). Suppose G is a graph with n vertices and K is the complete graph over n vertices. We define the normalized tree connectivity of G, denoted by t(G), as t(G) ¼D t(G)=t(K).
+According to this definition, the tree connectivity of each graph is normalized by the tree connectivity of the complete graph with the same number of vertices. In other words, to any simple connected graph G, t(G) assigns a score that reflects the tree connectivity of G relative to the tree connectivity of the complete graph with the same number of vertices. The following corollary directly follows from the above definition and Cayley’s formula (see Theorem 11).
+Corollary 5. Let G be a simple undirected graph with n vertices. The following statements hold regarding the normalized tree connectivity of G:
+
+1.
+
+t(G) =
+
+t(G) (nÀ2) log
+
+(n);
+
+2. 0 ł t(G) ł 1;
+
+3. t(G) = 0 if and only if G is acyclic;
+
+4. t(G) = 1 if and only if G is the complete graph.
+
+Corollary 6 follows from Corollary 3.
+Corollary 6. In the SLAM problem defined in Section 2.3 with isotropic noise, we have
+
+lim Dinf(G) = t(G) d=l1!0+ Dinf(K)
+
+ð38Þ
+
+Hence, under the assumption of isotropic noise, the normalized tree connectivity can be interpreted as the ratio of the information gained relative to dead reckoning, between the realized graph G and the complete graph K. Finally, we note that a similar normalization scheme can be designed for weighted graphs. Such an extension, however, would require making explicit assumptions regarding the weights of the missing edges.
+
+Remark 4. Typical SLAM problems are naturally sparse. Consequently, normalizing the tree connectivity using the complete graph with the same number of vertices can be misleading since in practice K is not achievable for a moving robot. As will become clear in Section 5, our graph synthesis frameworks provides us with lower and upper bounds for the maximum tree connectivity of sparse graphs based on a more realistic model. Those bounds can be readily used instead of t(K).
+
+3.4. Tree connectivity: experimental results
+We conducted a series of experiments designed to:
+
+1. evaluate the tree connectivity of some of the publicly available real and synthetic SLAM benchmarks;
+2. empirically validate Theorem 3; 3. assess the sensitivity of the asymptotic result provided
+by Corollary 1 with respect to the value of d.
+
+Table 1. A list of publicly available 2D pose-graph datasets, sorted according to t(G).
+
+Dataset
+
+t(G)
+
+Average degree
+
+RE (%)
+
+M10K Intel
+
+0.22
+
+12.86
+
+0.13
+
+3.89
+
+City10K
+
+0.12
+
+4.13
+
+Lincoln Lab
+
+0.11
+
+3.90
+
+Manhattan RingCity Freiburg CSAIL
+
+0.09
+
+3.11
+
+0.05
+
+2.76
+
+0.04
+
+2.46
+
+0.02
+
+2.24
+
+0.07 0.06
+0.51
+58.00
+1.00 1.08 0.04 0.12
+
+To validate Theorem 3 and Corollary 1 numerically, we use the relative error (RE) defined as
+
+RE
+
+¼D
+
+log
+
+det I(x) À ‘t log det I(x)
+
+(G)
+
+=
+
+log
+
+(x) det I(x)
+
+ð39Þ
+
+where ‘t(G) ¼D 2twp (G) + twu (G). The datasets used in our experiments are all 2D pose-graph SLAM datasets. The non-diagonal noise covariance matrices have been modified to satisfy our assumptions about the noise covariance matrix (e.g., block-isotropic for Theorem 3 and isotropic for Corollary 3). In some cases, we have also removed par-
+3
+allel edges for simplicity. RE, through the FIM, depends on x. Recall that the inverse of the FIM evaluated at the ground truth results in the CRLB. Moreover, the covariance matrix of the ML estimator is usually approximated by computing the inverse of the Fisher information matrix at the MLE. Among the datasets used in this section, Manhattan (Olson, 2008) (a synthetic 2D pose-graph dataset) is the only one for which the ground truth is publicly available. Therefore, RE in other datasets is evaluated at the solution obtained by minimizing the negative loglikelihood cost function using Gauss–Newton initialized by the popular bootstrapping technique proposed in Konolige et al. (2010).
+The normalized tree connectivity for several publicly available datasets is shown in Table 1. The entries in Table 1 are sorted (in descending order) based on the normalized tree connectivity t(G). First, note that the RE is typically small, except in the case of the Lincoln Lab dataset. A small RE indicates that log det I(x) is already close to ‘t(G) as predicted by Theorem 3 and Corollary 1. This empirical observation hence suggests that in these datasets, the actual value of the gap (x) is small despite the large value of the upper bound provided by Theorem 3 (e.g., in Manhattan d ’ 1296:91). In such cases, the log-determinant of the FIM is almost entirely characterized by the tree connectivity of the underlying graph.
+It is important to note that evaluating log det I(x) at the solution returned by iterative schemes such as Gauss– Newton is subject to local minima and other convergence failure modes. The large RE in the case of Lincoln Lab dataset (highlighted in red) is partially due to the fact that Gauss–Newton has failed to converge to the true MLE. By
+
+10
+
+The International Journal of Robotics Research 00(0)
+
+10
+
+8
+
+Relative Error (RE) (%) Relative Error (RE) - Weighted (%)
+
+8 6
+6 4
+4
+2 2
+
+0
+
+10−2
+
+10−1
+
+100
+
+101
+
+102
+
+Scale Factor β
+
+0
+
+10−2
+
+10−1
+
+100
+
+101
+
+102
+
+Scale Factor β
+
+Figure 4. Evolution of RE evaluated at the ground truth as a
+function of the scale parameter b for Manhattan. Here d = bdorig in which dorig ’ 1296:91 is the value of d in Manhattan dataset (see Table 1). This can be done by scaling either s2p or p. Note the logarithmic scale of the horizontal axis.
+
+Figure 5. Evolution of RE evaluated at the ground truth as a function of scale parameter b for Manhattan with block-isotropic noise. Here d = bdorig in which dorig ’ 6:21 × 104. In this experiment, the edges have different noise variances. Note the
+logarithmic scale of the horizontal axis.
+
+contrast, approximating the D-criterion with the lower bound provided by Theorem 3 is naturally robust to such convergence errors.
+Note that in Table 1, the ranking based on the number of spanning trees is not consistent with the ranking based on the average degree of the graph (see the entries highlighted in green). As mentioned earlier, this is because the average degree, as a graph connectivity measure (Olson and Kaess, 2009), is too simple to capture the topological differences between two graphs with the same number of measurements per variables.
+Our next experiment is based on the Manhattan dataset. The FIM in this case is computed at the ground truth. In these experiments l1 is kept fixed. Figure 4 shows how RE evolves with respect to scaling d when the noise is isotropic. Scaling d can be done by scaling either s2p or p. Figure 4 is obtained by scaling d according to bdorig in which dorig ’ 1296:91 is the original value of d in the Manhattan dataset. As illustrated in Figure 4, the log-determinant of the Fisher information matrix approaches the limit value predicted by Corollary 1 as d approaches zero (see also the special case in Corollary 3).
+We also repeated this experiment for the case of blockisotropic noise. To make the original isotropic noise of Manhattan compatible with the assumption of blockisotropic noise, we added random perturbations to the original noise variances. In Figure 5, we scale d according to bdorig (this time dorig ’ 6:21 × 104 owing to random perturbations). Figure 5 shows once again that the approximation gap (x) vanishes as d approaches zero.
+Finally, Figure 6 shows how the D-criterion log det I(x) evolves as a function of t(G) for more than 44 × 103 random spanning subgraphs of the Intel Research Lab dataset. Each subgraph contains a random subset of loop-closure
+
+edges of the original dataset. For each possible number of loop-closures, we generated 50 random spanning subgraphs. The predicted value is ‘t(G). Note that for a fixed value of tree connectivity t(G), variation in the D-criterion (i.e., thickness of the blue line in Figure 6) reflects variation in (x); see Theorem 3. Figure 6 suggests that in this experiment, the difference in the D-criterion of SLAM subproblems that have the same tree connectivity is quite small (thickness of blue line relative to the value of D-criterion). This therefore indicates that in this case, tree connectivity almost entirely characterizes the D-criterion.
+4. Maximizing tree connectivity
+So far we have demonstrated that the WST is closely related to the D-criterion in SLAM and two other EoGs. This observation allows us to reason about the estimation error covariance in such problems based solely on the topology of the underlying graph. Thus, in principle, one can design reliable SLAM problems by synthesizing graph topologies with the maximum WST. Motivated by this insight, in this and the following sections we formulate and tackle the combinatorial optimization problem of designing graphs with the maximum WST under sparsity constraints. We will particularly focus on combinatorial optimization problems that can be used to solve the measurement selection problem in several different settings (see Section 8).
+4.1. Characterizing t-optimal graphs in Gn, m
+We begin by simplifying our notation. Recall that weighted tree connectivity induces a partial ordering on the set of undirected graphs with positive edge weights: two graphs G and H are comparable if and only if jV(G)j = jV(H)j. Let
+
+Khosoussi et al.
+
+11
+
+Figure 6. Log-determinant of the FIM log det I(x) as a function of t(G) for over 44 × 103 randomly generated spanning subgraphs of the Intel Research Lab dataset. Here log det I(x) is evaluated at the MLE of the original dataset. The prediction is based on the lower bound ‘t(G) provided by Theorem 3, i.e., by using only the graphical structure of the problem.
+
+Gn be the set of simple undirected graphs with n vertices.
+
+tn, w: 2E(Kn) ! R ø 0 : E 7! tw(½n, E)
+
+ð43Þ
+
+Now suppose G & Gn and a positive weight function w : E(Kn) ! R.0 are given. In the most general case, one
+
+Consequently, (41) can be rewritten as
+
+may seek t-optimal graphs with respect to G and w, i.e.,
+
+maximize tn, w(E)
+E2E
+
+ð44Þ
+
+maximize tw(G)
+G2G
+
+ð40Þ or, equivalently, since log is monotone
+
+Recall that in the special case of uniform edge weights, tw(G) in (40) can be replaced by the number of spanning trees t(G) without affecting the set of optimal solutions. Let GH 2 G be an optimal design. Note that the number of vertices and the edge weights in (40) are assumed to be given
+and, thus, the decision variables are graph edges. To emphasize on this point, let E ¼D fE(G) : G 2 Gg be the collection of the edge sets of the graphs in G. With a slight abuse of notation, (40) can be rewritten as
+
+maximize tw(½n, E)
+E2E
+
+ð41Þ
+
+maximize tn, w(E)
+E2E
+
+ð45Þ
+
+It will become clear soon why using tn, w is preferred over tn, w. Note that (41)–(45) represent the most general case of t-optimal graph synthesis. A natural special case is when G = Gn, m, i.e., the set of all simple undirected graphs with n vertices and m edges. This special case can be expressed as
+
+maximize tn, w(E)
+E&E(Kn)
+
+ð46Þ
+
+subject to jEj = m
+
+Lemma 1. The set of optimal solutions of (40) is invariant under scaling w by any constant a.0.
+Define wmin ¼D min w(u, v). According to the above lemma, if wmin\1 we can scale every weight by any a ø wÀm1in without affecting the t-optimal topologies in (40). Therefore, without losing any generality we can assume the following.
+Assumption 5. We assume that w(u, v) ø 1 for all adjacent vertices u and v.
+For clarity, let us define the WST and weighted tree connectivity as functions of the edge set of the graph. For any n ø 2 and w : E(Kn) ! R ø 1 define
+
+tn, w: 2E(Kn) ! R ø 0 : E 7! tw(½n, E)
+
+ð42Þ
+
+Similarly, we define
+
+The cardinality constraint enforces a desired sparsity level.
+
+In practice, sparsity of the graph is a crucial factor in deter-
+
+mining the amount of resources needed for solving the
+
+problems that arise over graph structures and networks. In
+
+particular, the number of measurements in SLAM influ-
+
+ences the computational cost of each iteration in Newton-
+
+based iterative solvers.
+
+The problem of characterizing graphs in Gn, m with the maximum number of spanning trees remains open, and is
+
+solved only for a number of special cases; see Boesch et al.
+
+(2009) for a recent survey. For example, such graphs have
+
+been characterized for specific ranges of m (as a function
+
+of n)suchas when n À 1ł mł n + 3 (almost-tree graphs)
+
+and
+
+n 2
+
+À n=2 ł m ł
+
+n 2
+
+(almost-complete graphs).
+
+Another major result is due to Cheng (1981) who proved
+
+that the family of regular complete multipartite graphs are
+
+12
+
+The International Journal of Robotics Research 00(0)
+
+t-optimal among all graphs with the same number of vertices and edges. More results can be found in Shier (1974), Cheng (1981), Wang (1994), Kelmans (1996), and Petingi and Rodriguez (2002). Unfortunately the span of these special cases is too narrow for many real applications including EoGs. Furthermore, the Gn, m constraint alone is typically insufficient for characterizing the true set of feasible graphs under spatial and physical constraints. Finally, these results do not cover the case of weighted graphs (or parallel) edges which is essential for our graphical formalism of estimation problems. In the following section, we focus on a class of special cases of (41) that can be used for designing near-D-optimal EoG problems, and particularly SLAM.
+
+4.2. The edge selection problem
+Suppose a connected base graph and a positive weight function over the set of all possible edges are given. Informally, in the edge selection problem (ESP) we seek t-optimal graphs within the set of graphs whose edge sets are at most k elements different from that of the base graph. This is formally defined as follows.
+Problem 1 (k-ESP). The input in k-ESP is as follows: (i) to be set of n ø 2 vertices V = ½n; (ii) a planning horizon k 2 N; (iii) a connected base graph Ginit = (V, Einit); (iv) a weight function w : E(Kn) ! R ø 1; (v) and a set of c ø k candidate edges C. We seek to solve the following combinatorial optimization problem:
+
+maximize tn, w(Einit [ E)
+E&C
+
+ð47Þ
+
+subject to jEj = k
+
+Figure 7 illustrates an instance of k-ESP.
+
+Remark 5. At first glance, the Gn, m constraint may seem
+
+to be a special case of k-ESP with Einit = [ and
+
+C=
+
+½n 2
+
+. However, it is worth emphasizing that this is
+
+not the case as Einit = [ violates the assumption of connectedness of the base graph. In some applications, Ginit is naturally connected and therefore we do not lose any prac-
+
+tical generality by making this assumption. For example, in
+
+pose-graph SLAM the odometry subgraph (i.e., the path
+
+graph with n vertices and weighted edges) is a natural
+
+choice for Ginit.
+
+Remark 6. It is trivial to see that the problem of pruning a k0-subset of a candidate set of edges in the base graph can also be posed as an instance of k-ESP if the base graph
+remains connected after removing the candidate set.
+
+Solving the general case of k-ESP by exhaustive search
+
+requires examining
+
+c k
+
+= Y(ck) graphs which is imprac-
+
+tical even in rather small problems. For example, for c = 30
+
+and k = 10 exhaustive search has to compute more than
+
+Figure 7. An example of k-ESP. The candidate edges are drawn with dashed lines. The number written on each edge is the weight assigned to that edge.
+3 × 107 Cholesky decompositions. To the best of the authors’ knowledge, there is no known faster algorithm for finding t-optimal graphs or solving the k-ESP problem in general. In the following sections, we provide efficient near-optimal approximation algorithms for this problem.
+
+4.4. 1-ESP
+Let us first consider 1-ESP as the simplest instance of k-ESP. As will become clear shortly, the solution of 1-ESP can be used as a building block for finding near-optimal solutions for the general k-ESP problem. An optimal edge in 1-ESP can be found by examining every candidate edge e 2 C, and choosing the one that maximizes the WST of the resulting graph (½n, Einit [ feg). Finding an optimal design using this brute force strategy requires computing the tree connectivity of c graphs (one for each candidate edge). If the base graph is dense (worst case), computing tree connectivity can be done in O(n3) operations using the Cholesky decomposition of the reduced weighted Laplacian matrix (similar to Algorithm 1). The total time complexity in this case is thus O(cn3). We can improve this computational complexity by leveraging the matrix determinant lemma. According to Lemma 5, the solution of 1ESP is given by
+
+eH 2 argmax w(e)De
+
+ð48Þ
+
+e2C
+
+Khosoussi et al.
+
+13
+
+Algorithm 2. 1-ESP
+
+Algorithm 3. Effective resistance
+
+1: function OneESPðC, CÞ 8 C: Candidate Set, C:
+
+Cholesky factor of Linit 2: m 0
+
+8 Maximum value
+
+3: for all e 2 C do
+
+8 Parallelizable loop
+
+4: we w(e)
+
+5: De Reff(e, C)
+
+6: if weDe.m then
+
+7:
+
+eH e
+
+8:
+
+m weDe
+
+9: end if
+
+10: end for
+
+11: return eH
+
+12: end function
+
+1: function Reffðeuv, CÞ
+
+8 Effective Resistance
+
+2: // column of the reduced incidence matrix
+
+3: auv reduce(eu À ev)
+
+4: // solve Cxuv = auv
+
+5: xuv ForwardSolver(C, auv) 6: Duv k xuvk2
+
+8 Lower triangular
+
+7: return Duv
+
+8: end function
+
+Algorithm 4. Greedy Edge Selection
+
+where De ¼D aTe LÀin1itae. Given the Cholesky factor of Linit, one can compute w(e)De for all candidate edges in O(cn2) time. Therefore, in this way, the Cholesky factor of Linit needs to be computed only once, which takes O(n3) operations. This results in O(n3 + cn2). Solving 1-ESP using this procedure will therefore be much faster than the na¨ıve brute force algorithm outlined above. This process is summarized in Algorithm 2.
+Remark 7 (Effective resistance). It is worth noting that De is the so-called effective resistance between the two endpoints of e in the base graph Ginit. The effective resistance induces a metric on graphs. Therefore, one can interpret De as the distance between the two endpoints of e in the base graph (resistance distance). This metric arises also in a broad range of applications; see Ghosh et al. (2008) for a survey. This insight provides an intuitive interpretation for (48). In the special case of unit edge weights, the optimal candidate edge for maximizing the tree connectivity of the graph in 1-ESP is the one that connects the vertices that are furthest (as measured by the resistance distance) from each other in the base graph.
+
+1: function GreedyESPðLinit, C, kÞ
+
+2: E [
+
+3: L Linit
+
+4: C Cholesky(L)
+
+5: while jEj\k do
+
+6: 7:
+
+eHuv E
+
+OneESP(CnE, C) E [ feHuvg
+
+8: // column of the reduced incidence matrix
+
+9: auv reduce(eu À ev) 10: L L + w(eHuv)auvauv pﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ 11: C CholeskyUpdate(C, w(eHuv)auv) 8 Rank-one update 12: end while
+
+13: return E
+
+14: end function
+
+O(n2) time. Therefore, an improved implementation of the greedy algorithm runs in O(n3 + kcn2) time. This procedure is described in Algorithm 4. It must be noted that when the base graph and set of candidate edges are sparse, the computational complexity of the greedy algorithm scales much better with n and depends on the sparsity pattern of the corresponding Laplacian matrices.
+
+5. Approximation algorithms for k-ESP
+5.1. Greedy algorithm
+The greedy algorithm finds an approximate solution for k-ESP by solving k instances of 1-ESP using the procedure described above. After solving each subproblem, an optimal edge is moved from the candidate set C to the base graph. The next instance of 1-ESP is then defined using the updated candidate set and base graph. In the worst case (dense graphs), a na¨ıve implementation of the greedy algorithm runs in O(kcn3) time. As mentioned above, this runtime can be reduced to O(kn3 + kcn2) by leveraging the matrix determinant lemma (Lemma 5). However, in this case we need to recompute the Cholesky factor of the updated base graph after solving each 1-ESP. Note that the Cholesky factor of the updated base graph can be computed by performing a rank-one update on that of the base graph in the previous round. This operation can be done in
+
+5.2. Performance guarantees
+Now we analyze the performance of the greedy algorithm described in Algorithm 5.
+Definition 3 (Tree-connectivity gain). Given an instance of k-ESP, the tree connectivity gain is defined as
+
+Fw : E 7! tn, w(Einit [ E) À tn, w(Einit)
+
+ð49Þ
+
+The domain of Fw is restricted to 2C. Here Fw is a set function that takes as input a subset of
+the candidate edges E & C, and returns the marginal increase in weighted tree connectivity after adding the edges in E to a given base graph Ginit. Now k-ESP (47) can be expressed as
+
+maximize Fw(E)
+E&C
+
+ð50Þ
+
+subject to jEj = k
+
+14
+
+The International Journal of Robotics Research 00(0)
+
+Algorithm 5. Greedy Dual Edge Selection
+
+1: function GreedyDualESP(Linit, C, D) 2: E [
+
+3: L Linit 4: C Cholesky(L)
+
+5: while (Fw(E)\D) & (E 6¼ C) do
+
+6:
+
+eHuv OneESP(CnE, C)
+
+7:
+
+E E [ feHuvg
+
+8: // column of the reduced incidence matrix
+
+9: auv reduce(eu À ev)
+
+10:
+
+L L + w(eHuv)auvauv pﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+
+11:
+
+C CholeskyUpdate(C, w(eHuv)auv)
+
+one update
+
+12: end while
+
+13: return E
+
+14: end function
+
+8 Rank-
+
+Lw(p)
+
+¼D
+
+Linit
+
++
+
+Xc piw(ei)Lei
+
+= AWpA
+
+,
+
+i=1
+
+ð52Þ
+
+where Lei is the reduced reduced incidence matrix
+
+elementary Laplacian, of Gall ¼D (½n, Einit [ C),
+
+A is and
+
+the Wp
+
+is the diagonal matrix of edge weights assigned by the fol-
+
+lowing weight function,
+
+&
+
+wp : e 7!
+
+pie w(e) w(e)
+
+e2C otherwise
+
+ð53Þ
+
+in which pie 2 fpigci = 1 is the indicator variable associated to the candidate edge e.
+
+Lemma 2. If Ginit is connected, Lw(p) 1 0 for any p 2 ½0, 1c.
+As before, for convenience we assume Ginit is connected. Now consider the following integer program.
+
+Theorem 4. The set function Fw is normalized, monotone, and submodular for any n ø 2, positive weight function w, and connected base graph.
+Maximizing an arbitrary monotone submodular function subject to a cardinality constraint generalizes the maximum coverage problem (Hochbaum, 1996) and, hence, is NPhard in general. A classical result is due to Nemhauser et al. (1978) who have shown that the greedy algorithm is an h-approximation algorithm for maximizing any normalized monotone submodular function subject to a cardinality constraint where h ¼D 1 À 1=e ’ 0:63. Corollary 7 follows directly from Theorems 4 and 14 (Nemhauser et al., 1978).
+Corollary 7. Let OPT be the optimal value of (47), tgreedy be the weighted tree connectivity of the graph synthesized by the greedy algorithm, and tinit be that of the base graph. It holds
+
+tgreedy ø h Á OPT + ð1 À hÞ Á tinit
+
+ð51Þ
+
+Remark 8. Theorem 4 also allows us to reduce the number of lower triangular linear systems that need to be solved in each round of the greedy algorithm; this is known as the lazy (or accelerated) greedy algorithm (Krause and Golovin, 2012; Minoux, 1978). We leverage this idea to speed up the greedy algorithm in Section 9.4.
+
+5.3. Convex relaxation
+In this section, we propose a second approximation algorithm for k-ESP through a convex relaxation inspired by that of Joshi and Boyd (2009). Let us begin by assigning an indicator variable pi 2 f0, 1g to each candidate edge ei 2 C. We can then express the problem as an integer program where finding the optimal set of candidate edges is equivalent to finding optimal pi’s. Let p ¼D ½p1 p2 Á Á Á pcT be the stacked vector of indicator variables. Let Linit denote the reduced weighted Laplacian matrix of Ginit. Define,
+
+maximize
+p
+
+log det Lw(p)
+
+Pc
+
+subject to
+
+pi = k
+
+ðP1Þ
+
+i=1
+p 2 f0, 1gc
+
+It is easy to verify that the above optimization problem is equivalent to k-ESP in (47). First, recall that according to the generalized matrix-tree theorem (Theorem 12) the objective is equal to the weighted tree connectivity of Gall = (½n, Einit [ C) when edges are weighted by wp. In this new narrative, the ith candidate edge is selected iff pi = 1. The combinatorial hardness of k-ESP is embodied in the p 2 f0, 1gc constraint. A natural choice for relaxing ðP1Þ is to replace each pi 2 f0, 1g with pi 2 ½0, 1:
+
+maximize
+p
+
+log det Lw(p)
+
+Pc
+
+subject to
+
+pi = k
+
+ðP2Þ
+
+i=1
+p 2 ½0, 1c
+
+where, after a minor abuse of notation, p is the stacked vector
+4
+of pi ’s. It should be immediately clear that the feasible set of ðP2Þ contains that of ðP1Þ, and therefore the optimal value of ðP2Þ is an upper bound for the optimal value of ðP1Þ. Note that ðP2Þ is a convex optimization problem since log det Lw(p) is concave on fp : Lw(p) 1 0g, which contains ½0, 1c when Ginit is connected (Lemma 2), and the feasible set is convex. An ‘1-regularized variant of ðP2Þ is an instance
+of the MAXDET problem (Vandenberghe et al., 1998),
+
+Pc
+
+maximize log det Lw(p) À l pi
+
+p
+
+i=1
+
+ðP3Þ
+
+subject to p 2 ½0, 1c
+
+ðP3Þ is also closely related to the graphical lasso (Friedman et al., 2008). The new term in the objective of ðP3Þ promotes sparsity, while the log-determinant term rewards stronger tree connectivity. The penalty coefficient l is a
+
+Khosoussi et al.
+
+15
+
+parameter that controls the desired degree of sparsity, i.e., a larger l yields a sparser graph.
+
+5.4. Rounding
+
+Problems ðP2Þ (and ðP3Þ) can be solved in polynomial time using interior-point methods (Boyd and Vandenberghe,
+2004; Joshi and Boyd, 2009). After finding a globally optimal solution pH for the relaxed problem ðP2Þ, we need to map it into a feasible p for ðP1Þ and pick k candidate edges accordingly. The following lemma follows trivially from the fact that ðP2Þ is a relaxation of ðP1Þ.
+
+Lemma 3. The solution pH is an optimal solution for k-ESP iff pH 2 f0, 1gc.
+In the more likely case of pH containing fractional val-
+
+ues, we need a rounding procedure to set k auxiliary vari-
+
+ables to one and others to zero. The most intuitive heuristic choice is to pick the k edges with the largest pHi (Joshi and Boyd, 2009). We call this strategy the deterministic round-
+
+ing by sorting. The relaxation approach described so far
+
+can be seen as a graphical specialization of the algorithm
+
+proposed by Joshi and Boyd (2009). In the rest of this sec-
+
+tion, we extend their results and shed more light on the con-
+
+nection between ðP1Þ and ðP2Þ.
+
+Consider a simple randomized rounding scheme in
+
+which
+
+we
+
+independently
+
+sample
+
+pi
+
+;
+
+Bern(pHi )
+
+for
+
+i
+
+2
+
+½c 5
+
+and pick corresponding candidate edges accordingly.
+
+Random graphs generated in this way are called anisotro-
+
+pic random graphs (ARGs) (Cohen, 1986). This model
+
+generalizes the well-studied Gilbert–Ero¨s–Re´nyi random
+
+graph model (Gilbert, 1959) by allowing anisotropic edge
+
+probabilities. The na¨ıve procedure for computing the
+
+expected WST in ARGs involves a summation over expo-
+
+nentially many terms. Nonetheless, Cohen (1986) has
+
+shown that the expected number of spanning in ARGs is
+
+equal to the WST when edges are weighted by their corre-
+
+sponding probabilities, and thus can be computed effi-
+
+ciently using the matrix-tree theorem. In what follows, we
+
+generalize this result to the case of edge-weighted ARGs
+
+and leverage it to analyze the performance of the rounding
+
+scheme introduced above. Later on we generalize this result
+
+even further to the sensor selection problem studied by
+
+Joshi and Boyd (2009).
+
+Theorem 5. Let kÃ and twÃ denote the number of selected candidate edges and the WST attained by the randomized
+
+rounding algorithm outlined above with edge (occurrence) probabilities p = ½p1 p2 Á Á Á pc . It holds:
+
+1.
+
+E½kÃ =
+
+Pc
+i=1
+
+pi;
+
+2. E½twÃ  = det Lw(p).
+
+Consequently, this implies that the relaxed problem can be interpreted as the problem of finding the optimal edge sampling probabilities p for the randomized algorithm described above.
+
+Corollary 8. The objective in problem ðP2Þ is to find the optimal edge sampling probabilities pH such that the WST
+
+is maximized in expectation, while the expected number of
+
+newly selected edges is equal to k.
+
+Put differently, problem ðP2Þ can be seen as a convex relaxation of k-ESP at the expense of maximizing the
+
+objective and satisfying the constraint, both in expectation.
+
+Similarly, problem ðP3Þ is equivalent to
+
+Pc !
+
+maximize
+p
+
+log E½det Lw(p) À lE pi
+i=1
+
+ðP03Þ
+
+subject to p 2 ½0, 1c
+
+where pi ; Bern(pi) and pi?pj for all i, j 2 ½c (i 6¼ j). This new interpretation can potentially be used to design
+randomized rounding procedures based on the randomized scheme described above. Using pH in the above-mentioned
+randomized scheme, Theorem 5 ensures that, on average, we attain det Lw(pH) by picking k new edges in expectation. Needless to say, merely sampling candidate edges with the probabilities in pH is not sufficient to guarantee attain-
+ing a feasible solution with high probability.
+Now recall the deterministic rounding by sorting scheme
+and let Ssort be the edges selected by this algorithm. For any S & C, let pk(S) denote the conditional probability of the event in which the randomized scheme selects S, given that kÃ = k candidates have been selected. We have
+
+( Q pHi Q (1 À pHj ) jSj = k pk (S)} ei2S ej2CnS
+
+ð54Þ
+
+0
+
+otherwise
+
+Theorem 6. Ssort 2 arg maxS&C pk(S).
+
+According to Theorem 6, the deterministic rounding via sorting is equivalent to selecting the most probable feasible subset of candidates, when candidates are selected with the probabilities in pH. Theorem 5, Corollary 8, and Theorem 6 can be extended to the more general case of D-optimal sensor selection studied in Joshi and Boyd (2009). The only non-trivial piece is provided below.
+
+Theorem 7 (Determinant of random sum of rank-one matrices). Given m pairs of real n-vectors fuigmi = 1 and fvigmi = 1, and random variables fpigmi = 1 such that
+
+pi ; Bern(pi) i 2 ½m
+
+ð55Þ
+
+Theorem 5 described above,
+
+states that on average,
+
+thseelecrtasndPomci =iz1epdi
+
+rounding candidate
+
+edges and, in expectation, attains det Lw(p) WST. Now
+
+note that these expressions appear in the constraints and
+
+the objective of the relaxed problem ðP2Þ, respectively.
+
+we have
+
+pi?pj
+
+i, j 2 ½m, i 6¼ j ð56Þ
+
+16
+
+The International Journal of Robotics Research 00(0)
+
+"
+
+!#
+
+Xm
+
+! Xm
+
+E det
+
+piuivi = det
+
+piuivi
+
+i=1
+
+i=1
+
+ð57Þ
+
+Note that the second statement in Theorem 5 follows from Theorem 7 as a special case in which fuig and fvig are the columns of the reduced (weighted) incidence matrix.
+
+5.5. Certifying near-optimality
+It is intractable to compute OPT in real-world instances of k-ESP for (even offline) empirical evaluation of a proposed approximate solution. As a proxy, we can use the approximation algorithms presented in this section to find lower and upper bounds for OPT. Let tHcvx be the optimal value of ðP2Þ, and tcvx be the suboptimal value obtained after rounding the fractional solution of ðP2Þ (e.g., picking the k largest pHi ‘s). Corollary 9 follows from the analysis presented for the proposed approximation algorithms.
+Corollary 9. Let Ugreedy ¼D ztgreedy + (1 À z)tinit in which z ¼D hÀ1 ’ 1:58. It holds that
+max (tgreedy, tcvx) ł OPT ł min (Ugreedy, tHcvx) ð58Þ
+The lower bounds are the suboptimal values attained by the approximation algorithms. More interestingly, Ugreedy follows from Corollary 7, and tHcvx is an upper bound for OPT since the feasible set of ðP2Þ contains that of ðP1Þ (i.e., k-ESP). These bounds can be computed by running the greedy and convex relaxation algorithms. In the instances of k-ESP where OPT is beyond our reach, these bounds can be used to assess and certify the quality of any other solution. Let E0 be an arbitrary k-subset of C and t0 ¼D tn, w(E0 [ Einit). E0 can be, e.g., (i) the solution of the greedy algorithm, (ii) the solution of ðP2Þ after rounding, (iii) an existing design (e.g., an existing pose-graph problem), or (iv) a heuristic suboptimal solution proposed by, for example, an expert. Let U denote the upper bound in (58). From Corollary 9 we have, OPT À t0 ł U À t0 and OPT=t0 ł U=t0 for the approximation gap and ratio, respectively.
+6. A dual approach: D-ESPÃ
+Our ultimate goal is to design sparse graphs with strong tree connectivity. We pursued this objective in k-ESP by searching for a graph with the maximum weighted tree connectivity among all graphs with certain number of edges constrained by a base graph and a candidate edge set. Alternatively, one may seek the sparsest graph that attains a desired weighted tree connectivity. This dual problem is formally defined below.
+Problem 2 (D-ESPÃ). Problem D-ESPÃ aims to select as few edges as possible from a given set of candidate edges C, such that adding those edges to a given connected base
+
+graph Ginit = (½n, Einit) results in a tree connectivity gain of at least 0 ł D ł Fw(C), i.e.,
+
+minimize jEj
+
+E&C
+
+ð59Þ
+
+subject to Fw(E) ø D
+
+Note that in k-ESP, one seeks to adapt the ‘‘perfor-
+mance’’ to a given budget constraint on the number of edges (measurements in EoGs). Alternatively, in D-ESPÃ we aim to find the most resources-efficient D-valuable sub-
+set of edges (measurements). In the rest of this section, we
+explain how our approximation algorithms designed for k-ESP and their analyses can be adapted to the dual problem D-ESPÃ.
+
+6.1. Greedy algorithm
+The greedy algorithm proposed for k-ESP in Algorithm 5.2 solves k instances of 1-ESP. The same algorithm can be applied to D-ESPÃ after a minor modification of the stopping criterion: instead of solving exactly k instances of 1-ESP, we continue solving a sequence of 1-ESP’s until the tree connectivity gain is at least D (or, alternatively, until we run out of edges in C which indicates an empty feasible set). The greedy algorithm for approximating the solution of (59) is outlined in Algorithm 5.
+
+6.2. Performance guarantees
+
+Recall that the performance guarantee presented for the
+
+greedy algorithm for k-ESP was made possible by Theorem
+
+4 and the seminal work of Nemhauser et al. (1978). Wolsey
+
+(1982, Problem (Q)) has analyzed the performance of the
+
+greedy algorithm for solving the submodular set covering
+
+problem:
+
+P
+
+minimize
+
+fi
+
+A&W
+
+ai 2A
+
+ð60Þ
+
+subject to z(A) = z(W)
+
+in which fi.0 for all ai 2 W and z: 2W ! R is any monotone submodular function. Now note that D-ESPÃ (59), is a special case of (60), in which W = C, fi = 1 for all ai 2 A, and finally z is A 7! minfD, Fw(A)g. This function is monotone submodular since Fw is monotone submodular (Theorem 4) and constant truncation preserves both properties (Theorem 15) as noted by Wolsey (1982).
+Let fgreedy and OPT be the value of the greedy algorithm and the optimal value of (60). For the general case of (60), where z does not need to be an integer-valued function, Wolsey (1982: Theorem 1) has established three a posteriori performance guarantees of the form
+
+fgreedy ł (1 + log g)OPT
+
+ð61Þ
+
+for several different values of g. These bounds are a posteriori in the sense that the value of g can be determined only after running the greedy heuristic. The following
+
+Khosoussi et al.
+
+17
+
+corollary states one of these bounds for the performance of the greedy algorithm (Algorithm 6.2) in D-ESPÃ.
+Corollary 10. Let kopt and kgreedy be the optimal value of (59) and the value achieved by Algorithm 5, respectively. Also, let Fe greedy be the tree connectivity gain achieved by the greedy algorithm one step before termination. It holds:
+
+kgreedy ł (1 + log g)kopt
+
+ð62Þ
+
+where g ¼D D=(D À Fe greedy).
+
+6.3. Convex relaxation
+We now demonstrate how the dual problem D-ESPÃ can be formulated as an integer program and relaxed similar to ðP1Þ. As before, let tinit ¼D log det Lw(0). The dual problem can be expressed as
+
+minimize
+p
+subject to
+
+Pc pi
+i=1
+log det Lw(p) ø D + tinit p 2 f0, 1gc
+
+ðD1Þ
+
+Relaxing the integral constraints on p yields the following convex optimization problem,
+
+minimize
+p
+subjectto
+
+Pc pi
+i=1
+log det Lw(p) ø D + tinit p 2 ½0, 1c
+
+ðD2Þ
+
+As we saw earlier for k-ESP, ðD2Þ is a convex optimiza-
+
+tion problem when Ginit is connected and can be solved efficiently using interior-point methods. Let pH be the
+
+mÆPinciim= 1izpeHir
+
+Ç
+
+of ðD2Þ. ł kopt.
+
+It
+
+immediately
+
+follows
+
+that
+
+6.4. Rounding
+
+Algorithm 6. Deterministic rounding for d-ESPÃ
+
+ÀÁ 1: function RoundDualESP pH
+
+2: p 0
+
+3: i 0
+
+4: // returns the indices of the sorted pH
+
+5: s SortDescending(pH)
+
+8 Such that
+
+pHs1 ø pHs2 ø . . . ø pHsc 6: // implemented as binary search
+
+7: while ( log det Lw(p)\D + tinit) & (p 6¼ 1) do
+
+8: psi 1 9: i i + 1
+
+10: end while
+
+11: return psort = p 12: end function
+
+minimize
+p
+subject to
+
+Pc E½ pi
+i=1
+log E½det Lw(p) ø D + tinit p 2 ½0, 1c
+
+ðD02Þ
+
+where pi ; Bern(pi) and pi?pj for all i, j 2 ½c (i 6¼ j). Thus, sampling edges independently with probabilities
+in pH will result in selecting
+
+"
+
+#
+
+Xc
+
+Xc
+
+E
+
+pi =
+
+pHi
+
+i=1
+
+i=1
+
+edges on average, while also satisfying the constraint in expectation. Now, as we saw earlier for k-ESP, this narra-
+tive can provide a new interpretation for the deterministic rounding procedure in Algorithm 6. Recall that pk(S) was defined to be the conditional probability of sampling exactly the set S & C, given that exactly k candidates have been selected. Let Sk 2 arg maxS&C pk(S). Now from Theorem 6 it readily follows that Algorithm 6 selects Skmin where kmin is the smallest k 2 ½c such that Fw(Sk) ø D.
+
+Lemma 4. pH is an optimal solution for D-ESPÃ iff pH 2 f0, 1gc.
+In general, pH may contain fractional values, and thus a rounding scheme is necessary to map pH into a feasible (suboptimal) solution for (D1). A natural deterministic rounding scheme is outlined in Algorithm 6. An efficient implementation of this algorithm using binary search runs in O(c log c) time.
+As we saw before, the fractional values p can be interpreted as the probability of independently selecting candidate edges. Hence, similar to Corollary 8, the following corollary readily follows from Theorem 5.
+Corollary 11. The objective in ðD2Þ is to find the optimal probabilities pH for sampling edges from C such that the expected value of the number of selected edges is minimized while the expected value of the WST is at least exp (tinit + D), i.e.,
+
+6.5. Certifying near-optimality
+
+Finding an optimal solution of D-ESPÃ by brute force is impractical in real-world instances of the dual problem, and thus kopt is generally beyond our reach in practice even for offline empirical evaluation. Fortunately, as we saw in the case of k-ESP, our approximation algorithms can provide lower and upper bounds for kopt that can be used as proxies.
+
+Corollary 12. Define zÃ ¼D 1=(1 + log g) where g is the parameter defined in Corollary 10. Let kcvx be the number of new edges selected by the deterministic rounding procedure in Algorithm 6. Then,
+
+&
+
+’
+
+max (ÆzÃkgreedyÇ,
+
+Xc pHi
+
+) ł kopt ł min (kgreedy, kcvx)
+
+i=1
+
+ð63Þ
+
+18
+
+The International Journal of Robotics Research 00(0)
+
+These bounds can be computed by running the corresponding approximation algorithms. They can then be used to bound the gap between kopt and any suboptimal design E0 with a value of k0. Let kL denote the lower bound in Corollary 12. Then we have k0 À kopt ł k0 À kL and k0=kopt ł k0=kL.
+7. Random edge selection
+In some applications, candidate edges represent potential choices whose existence (or ‘‘occurrence’’) is revealed only after solving the ESP. This may be due to the fact that determining the occurrence of a candidate edge requires performing a costly operation. For example, to determine whether a potential loop-closure edge exists between two particular poses in pose-graph SLAM, a robot first has to match the corresponding pair of images or laser scans (and, in multi-robot scenarios, exchange observations (Giamou et al., 2018)), which incurs a cost in terms of missioncritical resources. This type of uncertainty can be incorporated into k-ESP by utilizing the mathematical machinery developed earlier in Theorem 5 (and Theorem 7) for analyzing randomized rounding. For simplicity, let us assume that the edges of the base graph are deterministic. Our results, however, can be trivially extended to the case where the base graph also contains random edges, as long as it remains connected with a positive probability. ARGs can capture the uncertainty over the occurrence of candidate edges (see the discussion that led to Theorem 5). In particular, we consider the case where the ith candidate edge is ‘‘operational’’ with probability pi and ‘‘fails’’ with probability 1 À pi, independent of other candidates.
+Now given a k-ESP with occurrence probabilities of the candidate edges fpigci = 1, one may instead seek to maximize the expected WST by choosing k candidates. We call this the random edge selection problem (RESP) or k-RESP:
+
+provides a 1=2 Á (1 À 1=e) approximation factor for solving (65) (Leskovec et al., 2007).
+8. Applications
+The theoretical results presented in Section 3 (particularly, Theorem 3) reveal that designing D-optimal SLAM problems is closely related to designing graphs with the maximum WST. This led to the study of a class of constrained t-optimal graph synthesis problems. In this section, we show how our near-optimal graph synthesis framework can be used for measurement selection and pose-graph (edge) pruning in SLAM.
+8.1. Measurement selection
+Mobile robots are constrained by weight, size, and power budgets, limiting the capability of onboard hardware. This may leave a robot unable to process all the raw data its sensors provide to it in real time. Therefore, SLAM systems must be able to adapt to an allocated budget of missioncritical resources (e.g., battery, bandwidth, and CPU time). This is a critical prerequisite for scalable and long-term autonomy. Measurement selection is one of several mechanisms through which SLAM systems can achieve resource adaptation. In measurement selection, a robot seeks to select an ‘‘information-rich’’ budget-feasible subset of existing, newly acquired, and/or potential measurements. In this work, a budget-feasible subset refers to a subset of size at most k measurements for a given budget k. Measurement selection in SLAM can bring substantial resource savings in three different ways: (i) by reducing the computational cost per iteration of sparse linear back-end SLAM solvers; (ii) by reducing the computational cost of SLAM front-end loop-closure detection; and (iii) by reducing data transmission during inter-robot loop-closure discovery in collaborative SLAM. We briefly discuss each of these cases in the following.
+
+maximize E½tn, w(Einit [ E)
+E&C
+subject to jEj = k
+
+1. Back-end computational cost. The computational
+
+ð64Þ
+
+cost per iteration of Newton-based solvers is monotone
+
+in the measurement set. In particular, the number of
+
+From Theorem 5 recall that the objective is equal to the
+
+non-zero entries (NNZ) in the Cholesky factor
+
+WST after scaling candidate edge weights by the corre-
+
+sponding occurrence probabilities. Thus, any k-RESP can
+
+be cast and solved (approximately) as a k-ESP after scaling
+
+the edge weights.
+
+In some applications, one may wish to choose candi-
+
+dates such that k operational edges are selected in expecta-
+
+tion. Let o(E) denote the number of operational edges after
+
+selecting E. This problem can be expressed as
+
+maximize E½tn, w(Einit [ E)
+E&C
+
+ð65Þ
+
+subject to E½o(E) ł k
+
+P Note that E½o(E) = i2E pi and, thus, this constraint can be easily incorporated into our convex relaxation scheme.
+
+Furthermore, after a small modification, a greedy algorithm
+
+Figure 8. Expressing the k-ESP depicted in Figure 7 as an integer program with indicator variables p1, p2, p3.
+
+Khosoussi et al.
+
+19
+
+Figure 9. A synthetic Manhattan-like pose graph generated using g2o’s simulator (Ku¨mmerle et al., 2011). Sensor range and field of view are 5 meters and p radians, respectively (default parameters). In addition, loop closures can be established only if the headings of the corresponding two poses are at most p radians apart. The robot follows a random walk (each step: 1 meter forward motion or p=2 rotation) in a 45 m × 45 m environment. There are 3000 poses and about 81, 000 loop closures. Gauss–Newton can solve this (lownoise regime) problem in few iterations (\5). For example, the total runtime for solving the original dataset on an Intel Core i76820HQ CPU operating at 2.70 GHz is about 4.52 seconds.
+
+(excluding numerical cancelation) is determined by the
+
+(Ga´lvez-Lo´pez and Tardos, 2012; Giamou et al., 2018;
+
+NNZ in the information matrix and the resulting fill-
+
+Mur-Artal et al., 2015). After this initial pruning, we
+
+in. The NNZ in the coefficient matrix is Y(m + n)
+
+may still be left with a considerable number of poten-
+
+where m and n denote the number of loop closures and
+
+tial loop-closure candidates. This situation arises when
+
+poses, respectively, while fill-in depends on the spar-
+
+pose estimates are highly uncertain, or when
+
+sity pattern of the information matrix and the heuristic
+
+appearance-based schemes are weakened by perceptual
+
+ordering used (see, e.g., Dellaert and Kaess, 2006).
+
+aliasing. Resource-constrained platforms may benefit
+
+Although measurement selection techniques should
+
+from front-end measurement selection by restricting
+
+ideally consider both m and the fill-in, finding the fill-
+
+the search for loop closures to the k ‘‘best’’ candidate
+
+in minimizing ordering is NP-hard (see, e.g., Frey
+
+matches. Selecting potential measurements at this stage
+
+et al., 2018). Despite the natural sparsity of SLAM,
+
+(i.e., before sensor registration) necessitates taking into
+
+the number of loop closures grows rapidly if a robot
+
+account the stochastic nature of potential loop closures.
+
+revisits an area multiple times, or in collaborative
+
+Note that by constraining the number of sensor regis-
+
+SLAM, where multiple robots may cross one another’s
+
+trations, one also controls the growth of NNZ in the
+
+trajectories repeatedly. These scenarios are especially
+
+information matrix (and hence the cost per iteration of
+
+important in the context of lifelong SLAM where, e.g.,
+
+the SLAM back-end).
+
+a service robot operates in an office building or cam- 3. Communication cost in cooperative SLAM. Inter-
+
+pus (Huang et al., 2013). Pruning highly redundant
+
+robot loop closure detection in cooperative SLAM
+
+pose graphs becomes inevitable because of the limited
+
+incurs an additional communication cost as robots
+
+mission-critical resources available onboard. Figure 9
+
+have to exchange their corresponding observations
+
+illustrates this type of scenario using a realistic syn-
+
+with each other (e.g., laser scans, visual features, etc.;
+
+thetic dataset generated by g2o’s simulator (Ku¨mmerle
+
+see, e.g., Giamou et al., 2018). In general, the mini-
+
+et al., 2011). This figure shows the impact of pruning
+
+mum number of exchanges needed to verify a set of
+
+loop closures on the runtime of a Gauss–Newton sol-
+
+potential inter-robot loop closures between two robots
+
+ver. Note that the computational cost of online incre-
+
+is determined by the vertex cover number of a bipartite
+
+mental solvers such as iSAM (Kaess, 2008) that
+
+exchange graph whose edges represent potential loop
+
+require periodic batch updates has a similar depen-
+
+closures and whose vertices correspond to robot poses
+
+dence on m; see also (Kaess and Dellaert, 2009)
+
+(Giamou et al., 2018). Consequently, by limiting the
+
+2. Front-end computational cost. Loop-closure detec-
+
+number of inter-robot sensor registrations to k or
+
+tion and establishing relative pose measurements require matching two observations (‘‘sensor registra-
+
+fewer, we also guarantee that at most k exchanges will
+6
+be needed for loop-closure verification.
+
+tion’’ hereafter). Standard SLAM front-ends first select
+
+a potential subset of all pairs of robot poses for sensor
+registration. This is typically done by taking into 8.2. Related works
+
+account various criteria such as geometric information Joshi and Boyd (2009) and Shamaiah et al. (2010) proposed
+
+(i.e., sensor characteristics, pose estimates and their approximation algorithms for D-optimal sensor selection
+
+uncertainties) and appearance-based similarity metrics under linear measurement models with additive Gaussian
+
+20
+
+The International Journal of Robotics Research 00(0)
+
+noise. The approach of Joshi and Boyd (2009) is based on convex relaxation, while Shamaiah et al. (2010) leverage the submodular property of the log-determinant and provide near-optimality guarantees. Although these works are originally proposed for linear-Gaussian models, they can be applied to nonlinear measurement models in SLAM using a
+7
+fixed linearization point. Our approximation algorithms for k-ESP exploit the same structures to maximize the WST. However, backed by our results in Section 3, we apply a novel graphical approach to D-optimal measurement selection in SLAM. In hindsight, our approach can be intuitively interpreted as a special graphical linearization specifically designed for SLAM as an EoG problem.
+Controlling the growth of computational complexity of SLAM systems is essential for scalability and has been a central research direction: (see Bailey and Durrant-Whyte, 2006; Cadena et al., 2016: and references therein). Pruning state variables (i.e., nodes in the graphical representation of SLAM) is one of the most common approaches. Nodes can be pruned by marginalizing out the corresponding variables from the belief. However, this process creates fill-in. Consequently, the reduced belief is often approximated by pruning the fill-in, i.e., pruning edges from the underlying Gaussian Markov random field (Thrun et al., 2004). Many variations of node pruning and belief sparsification have been proposed (see, e.g., Carlevaris-Bianco et al., 2014; Choudhary et al., 2015; Eade et al., 2010; Huang et al., 2013; Kretzschmar and Stachniss, 2012; Mazuran et al., 2016; Paull et al., 2016, 2015; Vallve et al., 2018; Vial et al., 2011; Wang et al., 2013). The key difference between our approach and these works is that we prune edges (i.e., loop closures in pose graphs) directly from the pose graph, while the above-mentioned works prune nodes (variables) and the resulting fill-in (edges in the underlying probabilistic graphical model). It is worth noting that in principle, belief sparsification schemes may also be used for pruning measurements instead of fill-in (Huang et al., 2013). However, by directly pruning measurements we neither commit to a particular linearization point, nor do we introduce unnecessary artifacts in the belief. In addition, the belief created by measurement selection is ‘‘conservative’’ and ‘‘consistent’’ (Vial et al.,
+8
+2011) by design. We also note that by pruning a loop closure between poses i and j, one also avoids the fill-in that would have been created after marginalizing out either one of these poses in the first place.
+Davison (2005) pioneered information-theoretic measurement selection by proposing an active search strategy for visual SLAM that greedily matches features based on mutual information. This work was later extended by Chli and Davison (2009) who adopted a Gaussian mixture model. Kaess and Dellaert (2009) presented a computationally efficient measurement selection scheme similar to Davison (2005) for discarding redundant and uninformative measurements. Ila et al. (2010) study pose-graph SLAM and propose a strategy for evaluating the information gain of potential loop closures before allocating resources to
+
+sensor registration. Kretzschmar and Stachniss (2012) presented a scheme for discarding laser scans based on approximating the mutual information between laser scans and grid maps. More recently, Carlone and Karaman (2017) took advantage of submodularity of the log-determinant and approximate submodularity of the smallest eigenvalue of the information matrix (E-optimality criterion) for selecting the k most informative visual measurements in visual inertial navigation for resource-constrained micro aerial vehicles. The objective function used for measurement selection in Carlone and Karaman (2017) also takes into account the probability of successfully tracking features. Our work is similar to the above-mentioned works in that we also select an informative subset of measurements, albeit based on a graphical surrogate for the D-criterion; see Section 8.5 for a discussion of the advantages of our approach. Inspired by Ila et al. (2010), we also present a front-end (potential) loop-closure selection scheme based on tree connectivity to perform sensor registration only for information-rich candidate loop closures (detected based on visual similarity or geometry). Our framework takes the probability of obtaining positive matches from potential loop closures into account by exploiting the closed-form expression for computing the expected WST in random graphs (see Theorem 5).
+
+8.3. D-optimal measurement selection
+The measurement selection problem is captured by our k-ESP t-optimal graph synthesis formulation. There is, however, a subtle difference between the two formulations. In the synthesis problems studied so far, each edge is weighted by a single weight function. However, in SLAM each relative pose measurement is composed of two components (i.e., translational and rotational), each of which has its own precision; see wp and wu in Theorem 3. Thus, we need to revisit the synthesis problem in a more general setting, where multiple weight functions assign weights,
+9
+simultaneously, to a single edge. Fortunately, our near-toptimal graph synthesis framework and its analysis can be easily generalized to handle the expression that appears in Theorem 3 with multiple weight functions.
+
+1. Greedy algorithm: For the greedy algorithm, we just need to replace Fw with
+
+C : E 7! 2Fwp (E) + Fwu (E)
+
+ð66Þ
+
+which appears in ‘t(G); see Theorem 3. Note that C is a linear combination of normalized monotone submodular functions with positive weights, and therefore is also normalized, monotone, and submodular.
+2. Convex relaxation: The convex relaxation approach can also be generalized by replacing the concave objective function log det Lw(p) with the following concave function,
+
+Khosoussi et al.
+
+21
+
+Figure 10. An overview of SLAM pipeline after incorporating the proposed measurement selection frameworks. In (a), measurement selection is performed after the existence of edges have been confirmed with sensor registration. In (b) we have to choose random edges with occurrence probabilities to maximize the expected weighted tree connectivity.
+
+probabilities for each potential candidate in P. At this point, we need to select k promising potential edges from P, perform scan registration (for full verification and computing the relative transformation between the corresponding poses), and add the resulting loop-closure measurements to the pose graph.
+This problem is closely related to k-RESP, where the goal is to select k random edges such that the expected WST in the resulting graph is maximized. Using a similar idea, we solve the following problem:
+
+maximize
+E&P
+
+2 log E½tn, wp (E) + log E½tn, wu (E)
+
+ð68Þ
+
+subject to jEj = k
+
+2 Á log det Lwp (p) + log det Lwu (p)
+
+ð67Þ
+
+which appears as ‘t(G) in Theorem 3.
+
+Therefore, we can easily use the approximation algorithms developed for k-ESP to find a near-optimal k-subset of the measurements.
+
+8.4. D-optimality-aware SLAM front-end
+In this section, we motivate and develop a SLAM front-end that is capable of allocating mission-critical resources to search for potential loop closures that significantly improve D-optimality through improving the tree connectivity of the underlying graph. It is worth emphasizing that this scenario is different from the measurement selection problem presented above (i.e., back-end measurement selection), where candidate edges correspond to (true) loop closures that have already been extracted from raw observations (i.e., after sensor registration); see Figure 10(a).
+We propose a D-optimality-aware SLAM front-end based on k-RESP (Section 7) for selecting a subset of potential candidates before performing sensor registration (Figure 10(b)). In our model, we assume a prior occurrence probability can be computed for any potential loop closure, and that loop closures occur independently. The occurrence probabilities can be estimated based on sensor specifications (e.g., sensing range) and estimated robot trajectory, or through the use of similarity scores provided by a place recognition system such as DBoW2 (Ga´lvez-Lo´pez and Tardos, 2012; see also Tian et al., 2018). The independence assumption provides tractability, and allows us to use the provable guarantees presented for k-RESP. We evaluate this model in Section 9 with real and synthetic SLAM datasets. Now suppose that due to resource constraints, a robot is only capable of performing k sensor registrations within a fixed interval of h poses. Consequently, in each interval, the robot has to gather an initial set of candidates P consisting of potential loop closures between either (i) a pose in the next h poses and one of the previous poses, or (ii) two of the h new poses. We then estimate the occurrence
+
+Like k-RESP, the proposed near-t-optimal approximation algorithms and their provable guarantees readily generalize to this case. In practice, it is necessary to prefilter P by removing highly improbable candidates before solving the above problem since selecting a false potential loop closure with a low occurrence probability may still seem desirable for maximizing the expected WST. Unlike Ila et al. (2010), this work explicitly takes into account both the occurrence probability and information gain (albeit using our graphical approximation) by incorporating expected values in our objective function. Furthermore, while Ila et al. (2010) mainly considered the case where h = 1, our approach shows more flexibility in dealing with longer horizons as we only need to reason about the resulting graph topologies and not relying on open-loop estimates. Indeed, estimating the information gain by evaluating the Jacobian at the openloop estimate may lead to erroneous selections.
+The D-optimality-aware front-end based on k-RESP as proposed above can also be used for inter-robot loopclosure detection in collaborative SLAM. Robots need to share their observations with their peers in order to establish inter-robot loop closures (see, e.g., Cieslewski and Scaramuzza, 2017; Dong et al., 2015; Giamou et al., 2018). As such, in addition to computational costs of sensor registration, in collaborative SLAM robots are also subject to communication costs that prevent them from sharing the entirety of their beliefs and observations for inter-robot loop closure detection (Giamou et al., 2018; Tian et al., 2018). Our D-optimality-aware front-end can ensure that the limited allocated resources are used to extract highly informative (in expectation) inter-robot loop closures. Potential inter-robot loop closures and their probabilities can be obtained by exchanging compact clues such as bagof-words vectors (see Cieslewski and Scaramuzza, 2017; Giamou et al., 2018; Tian et al., 2018). By selecting k informative potential inter-robot loop closures, one can bound both the number of observation exchanges (i.e., communication cost) and sensor registrations (i.e., computational cost) for inter-robot loop closure detection by k. It is worth noting that while it is true that in the worst case verifying k potential inter-robot loop closures requires exchanging k
+
+22
+
+The International Journal of Robotics Research 00(0)
+
+observations, in practice this can often be done by fewer exchanges as shown in Giamou et al. (2018) (see Tian et al. (2018) for inter-robot loop-closure detection under budgeted communication using a precise model of communication cost).
+Since the expected WST only depends on the structure of the graph and not on the underlying geometry, it is uniquely suited to multi-robot settings where inter-robot geometry has not yet been reliably established. This is in contrast to the D-criterion which requires an accurate (fixed) linearization point for robots’ trajectories. Consequently, in Section 9 we present experimental results for collaborative SLAM scenarios to motivate measurement selection.
+
+8.5. Observed D-optimality versus tree connectivity
+
+Recall that in general nonlinear estimation problems such as SLAM, evaluating the D-criterion requires a linearization point. In principle, one should seek the asymptotic covariance matrix of the ML estimator, or equivalently, the CRLB, which is given by the inverse of the FIM I(x) evaluated a the true value x = xtrue. Since xtrue is not available, the D-criterion is usually approximated by evaluating log det I(x) at the MLE (hereafter, ‘‘observed D-criterion’’).
+In Section 9 we empirically demonstrate that measurement selection based on our graphical surrogate objective provides a comparable performance to measurement selection based on the observed D-criterion, while being significantly faster. Here we briefly discuss three advantages of using tree connectivity over the observed D-criterion for measurement selection in SLAM.
+
+Computational cost. From a computational standpoint,
+
+measurement selection based on the observed D-criterion
+
+would be more expensive than the proposed approach.
+
+Here we justify this using a worst-case computational com-
+
+plexity analysis; see Section 9 for experimental results.
+
+Recall that in each round of the greedy algorithm, we need
+
+to assess the remaining candidate loop closures. Rather
+
+than evaluating the actual objective function once for each
+
+candidate, we can compute the Cholesky factorization only
+
+once in each round, and then use the matrix determinant
+
+lemma for comparing the candidates (see Section 4.2 and
+
+Algorithm 2). Using the tree connectivity as the objective
+
+function, in the rth round of the greedy algorithm we need
+
+to compute two Cholesky decompositions of n × n matrices
+
+(for Lwp and Lwu ), followed Lwu ) n × n triangular linear
+
+sbyystseomlvsinwgh2erÁeccr r(f¼DorcLÀwpr
+
+and +1
+
+is the number of remaining candidates. The total floating-
+
+point operations (flop) count for the most expensive steps
+
+in each round of the greedy algorithm is therefore ; 2 Á n3 + 2 Á cr Á n2. Now in the case of D-criterion, we need to compute the Cholesky factor of the 3n × 3n infor-
+
+mation matrix, followed by solving 3 Á cr (3 is the dimension of each measurement in pose-graph SLAM) triangular
+
+linear systems. The flop count for the D-criterion objective is ; (3n)3 + 3 Á cr Á (3n)2 = 27 Á n3 + 27 Á cr Á n2 (i.e.,
+10
+roughly 13.5 times the flop count for tree connectivity).
+Linearization error and convergence failure. In practice, the solution obtained by iterative methods such as Gauss– Newton (applied to the negative log-likelihood) is treated as the MLE. These techniques are subject to local minima and, therefore, may fail to convergence to the correct solution. Measurement selection under such erroneous evaluations of the D-criterion objective is clearly unreliable. Formally, from Theorem 3 we know that log det I(x) = 2twp (G) + twu(G) + (x). The first two terms are independent of x and thus the error between the D-criterion evaluated at the ground truth and, e.g., a local minimum x~ can be written as
+j log det I(x~) À log det I(xtrue)j = je(x~) À e(xtrue)j ð69Þ
+In general, this error term is unbounded and can grow arbitrarily large depending on the error in x~. Similarly, even in cases where the true MLE is available, significant estimation errors may still cause the observed D-criterion to deviate significantly from the true D-criterion (i.e., evaluated at the true value), which can potentially affect the quality of selected measurements. By contrast, the proposed tree connectivity surrogate objective is inherently immune to such convergence errors since it does not depend on x; see the case of the Lincoln Lab dataset in Table 1 for an example.
+9. Experiments
+In this section, we present experimental results based on randomly generated graphs, realistic simulations, and real SLAM benchmark datasets to validate our theoretical results and evaluate the performance of the proposed approximation algorithms. The experiments are specifically designed to demonstrate and evaluate the use of our near-toptimal graph synthesis framework for measurement selection in SLAM. We implemented our algorithms in MATLAB. Problem ðP2Þ (convex relaxation) is modeled using YALMIP (Lo¨fberg, 2004) and solved using SDPT3 (Tu¨tu¨ncu¨ et al., 2003). The fractional solution of the convex program is rounded using the deterministic (sorting) rounding scheme. We used an Intel Core i7-6820HQ CPU operating at 2.70 GHz to run our experiments.
+We introduce in Figure 11(a) a dataset based on KITTI odometry sequence 0 (Geiger et al., 2013). This sequence was chosen due to the existence of a significant number of loop closures created by overlaps in the trajectory. In the experiments of Section 9.3, the occurrence probabilities for candidate edges in k-RESP are generated according to the normalized DBoW2-based score a described in Ga´lvezLo´pez and Tardos (2012). While this quantity is not an exact empirical probability estimate of edge likelihood, our experiments demonstrate that they are suitable proxies. In order to simulate loop-closure candidates that would arise
+
+Khosoussi et al.
+
+23
+
+Table 2. Dataset details and algorithm runtimes for edge cardinality budget k = 150. All runtimes reported in seconds. Our Doptimality-aware front-end is able to quickly select a tiny fraction of all available candidate edges for loop-closure verification. This leads to a sparse pose graph that can be optimized efficiently via solvers such as g2o. ‘‘Valid Edges’’ refers to actual loop closures, while ‘‘Total Edges’’ refers to all potential loop-closure candidates.
+
+Dataset
+
+Poses Valid Edges
+
+Total Edges
+
+% Edges WST
+
+D-Crit. WST
+
+D-Crit.
+
+Full
+
+WST
+
+Checked Runtime (s) Runtime Batch
+
+Batch
+
+g2o Iter. g2o Iter.
+
+(s)
+
+Runtime (s) Runtime (s) Time (s) Time (s)
+
+KITTI 00 Atlas1K Atlas2K Atlas3K Atlas4K Atlas5K
+
+2049 1000 2000 3000 4000 5000
+
+300
+
+514
+
+29
+
+2459 6094 2.5
+
+10,517 26,013 0.6
+
+14,596 36,476 0.4
+
+21,730 53,935 0.3
+
+27,006 66,371 0.2
+
+0.89 11.32 120.48 211.96 474.91 712.80
+
+9.36 28.18 230.13 412.29 859.69 1317.2
+
+0.38 0.98 4.84 6.25 8.89 10.67
+
+2.20 4.12 17.26 20.78 27.76 32.65
+
+0.0023 0.0079 0.44 0.93 7.40 7.66
+
+0.0025 0.0013 0.0027 0.0041 0.0057 0.0069
+
+in a multi-agent scenario, the dataset was partitioned into fifths, with each fifth representing a distinct robot’s trajectory and measurements. The candidate edge set is restricted to those that are incident on poses associated with two distinct robots. The 2D pose constraints for odometry and loop-closure candidates were generated using ORB-SLAM (Mur-Artal et al., 2015). Stereo image pairs from the KITTI dataset were used to generate 3D odometry and loop closures which were projected into a 2D plane. The loopclosure candidate poses and edges were discovered and assigned probabilities using the version of DBoW2 included in ORB-SLAM. Candidates with normalized score less than a threshold of 0.2 were omitted in order to prefilter outliers and unlikely matches.
+To evaluate the performance of our proposed methods on problem instances with a large number of poses and candidate edges, we created a series of synthetic, Manhattan-like grid world datasets, which we will refer to as Atlas datasets, using the 2D simulator included in g2o (Ku¨mmerle et al., 2011). The odometry and loop closures generated by the simulator are corrupted with additive zero-mean Gaussian noise with sÀu 2 = 5000 and sÀp 2 = 500. The simulator includes loop closures between poses within a range of 5 meters and angular field of view of 1808. The overlapping fraction of poses’ fields of view were used to generate (exact) probabilities for candidate edges in the k-RESP problem, which were then assigned as valid or invalid by random sampling. Only the edges that were randomly sampled as valid are available for solving the resulting pose graph if they are selected; the remainder are treated as false positives. Thus, the measurement noise and probabilities used in our SLAM front-end experiments are exact for the Atlas dataset, providing an idealized scenario with ground truth in which to test our proposed algorithm on large-scale problems in Section 9.3. In order to keep the number of candidate edges manageable, the maximum degree for any vertex was limited to 40 via an initial random pruning of edges. The dense graphs studied here could arise in scenarios where one or more robots
+
+Figure 11. Left: KITTI odometry sequence 00. Right: 2D Atlas simulation (5000 poses). Each trajectory is partitioned into five sub-trajectories representing different robots.
+frequently revisit certain areas where they are able to establish loop closures. Limiting this density by selecting an informative subset of candidate edges is a means of maintaining high localization and mapping accuracy while controlling resource consumption; see Section 8.
+Figure 11(b) displays the largest Atlas dataset created, which contains 5000 poses. The same strategy of partitioning the datasets into fifths used on the KITTI dataset was used, providing a large number of inter-robot loop closures. Table 2 summarizes the number of poses and loop closures in the KITTI and Atlas datasets.
+9.1. Near-t-optimal graph synthesis: randomly generated graphs
+We conducted a series of experiments on randomly generated graphs to evaluate the performance of the proposed approximation algorithms. In each experiment, a random base graph was generated with n 2 f20, 50g vertices. In these experiments, the set of candidate edges is C = E(Kn)nEinit. Figure 18 illustrates the performance of our approximate solutions for k-ESP.
+In the first experiment, we kept k = 5 fixed and gradually increased the number of edges in the base graph jEinitj. Note that this is equivalent to gradually reducing the
+
+24
+
+The International Journal of Robotics Research 00(0)
+
+the convex program (before rounding) tHcvx, which is an upper bound on OPT; see Corollary 9. Hence, although OPT is not available in the case of n = 50, we can still assess the proposed approximate algorithms using tHcvx. As we can see from these figures, both algorithms are able to design graphs with a value close to OPT.
+In the second experiment, we kept the base graph fixed with n = 50 vertices and jEinitj = 200 edges. The number of candidate edges is thus c = 1025. We then gradually
+increased the value of k from 1 to 100. Figure 12(c) shows
+the results. Unlike the previous figures, here we can see that
+the optimality gap for the convex relaxation algorithm becomes noticeable as k increases. According to this figure,
+the greedy algorithm begins to significantly outperform the convex relaxation once k ø 20 and attains near-t-optimal designs as certified by tHcvx.
+
+Figure 12. Problem k-ESP on randomly generated graphs.
+cardinality of the candidate set C. We then ran the proposed greedy and convex approximation algorithms, and recorded the tree connectivity of the resulting graphs. For n = 20, we also found OPT via exhaustive search. In practice, finding OPT is only feasible in small graphs. The results are depicted in Figures 12(a) and (b). In these figures, tgreedy and tcvx denote the tree connectivity achieved by the greedy and convex relaxation followed by deterministic rounding, respectively. We also report the optimal value of
+
+9.2. Near-D-optimal measurement selection and graph pruning in SLAM
+Now we evaluate the graphical measurement selection scheme proposed in Section 8.3 using the KITTI, Atlas, and Intel Research Lab datasets. The original Intel Research Lab dataset was collected by Ha¨hnel (2003). We extracted the graph from the preprocessed version provided as part of g2o (Ku¨mmerle et al., 2011). In our experiments, the base graph consists of the n = 943 poses and jEinitj = 942 odometry edges. The candidate set C is the set of loop closures with c = 895 edges extracted from the original dataset. For the edge weights, we use the information matrices provided in the g2o dataset. Since the translational and rotational measurements have different precisions, two weight functions (wp and wu) assign weights to each edge of the graph. Our goal is to pick k loop closures for varying values of k such that ‘t(G) = 2twp (G) + twu (G) is maximized (i.e., our graphical surrogate for the D-criterion). Computing the true OPT through exhaustive search is not practical in this dataset.
+Figure 13 shows the results for different values of 1 ł k ł c. In Figure 13(a) we see the values obtained by running the greedy algorithm (tgreedy), convex relaxation before and after rounding (tHcvx and tcvx, respectively), and the upper bound on OPT based on the approximation factor proved for the greedy algorithm (Ugreedy); see Corollary 9. While both approximation algorithms generally perform well, once again we can see that the greedy algorithm outperforms convex relaxation with deterministic rounding, especially for 80 ł k ł 560. Based on Corollary 9, OPT is bounded from above by U ¼D minfUgreedy, tHcvxg. For small values of k, the tightest upper bound on OPT is given by U = Ugreedy (blue curve). However, for k ø 60, the convex relaxation provides a significantly tighter upper bound on OPT (green curve). Figures 12 and 13 suggest that the greedy algorithm can find provably near-optimal designs, while the fractional solution of the relaxed program can provide even stronger (albeit a posteriori) certificates for
+
+Khosoussi et al.
+
+25
+
+Figure 13. Problem k-ESP for pose-graph SLAM in the Intel Research Lab dataset. (a) The performance of the proposed
+approximation algorithms, as well as two upper bounds on OPT for varying k. (b) A summary of the distribution of a lower bound on the suboptimality ratio (%) computed using the tightest upper bound U = minftHcvx, Ugreedyg on OPT for each approximation algorithm.
+
+the near-optimality of the greedy design. Figure 13(b) displays the distribution of a conservative estimate of the suboptimality ratios (%) of the proposed approximation algorithms defined as tcvx=U × 100 and tgreedy=U × 100.
+Recall that in Section 3.4 experimental results were presented to validate our graphical approximation of the D-criterion. Now in Figure 14 we assess the accuracy of this approximation in the context of measurement selection. Figure 14(a) shows the D-criterion for the loop closures selected by the greedy algorithm in Figure 13. We have used g2o (Ku¨mmerle et al., 2011) to solve each problem (for 1 ł k ł 895). As expected, the true value is consistently close to ‘t(G) = 2twp (G) + twu(G). The box plot in Figure 14(b) shows a summary of the distribution of RE (%) defined in (39).
+Figure 15 illustrates the pose graphs synthesized by the greedy algorithm for six different values of k in the Intel Research Lab dataset. We have used the MLE based on the original dataset to visualize the trajectory of the robot. The objective value attained by the greedy algorithm and an upper bound for OPT are provided above each figure. Figure 15(f) shows the original dataset with 895 loop closures drawn in blue.
+Given a fixed linearization point, the D-criterion (after normalization) can be expressed as a function of selected loop closures,
+X fD : E 7! log det (Iinit + Ie) À log det Iinit ð70Þ
+e2E
+where Iinit 1 0 and Ie are the information matrices associated with the base graph and loop closure e, respectively. Here fD is normalized, monotone, and submodular
+
+(Shamaiah et al., 2010). Therefore, a near-optimal solution for the problem of maximizing fD subject to a cardinality constraint on E can be found by the greedy algorithm (Nemhauser et al., 1978; Shamaiah et al., 2010). We ran the greedy algorithm once for our graphical surrogate function based on the WST, and once for fD. The linearization point used for evaluating fD is the MLE based on the edges in the base (odometry) graph. We then took the measurements selected by each algorithm, and evaluated their resulting D-criterion using the best available linearization point (ground truth for synthetic data, and the MLE using all loop closures for KITTI). Figures 16 and 17 display the D-criterion achieved by each algorithm (namely, greedy WST and greedy observed D-optimality) and their runtimes in the KITTI and Atlas datasets. The lazy evaluation method (Krause and Golovin, 2012; Minoux, 1978) was used to speed up the computation time of both greedy algorithms. In order to make the runtime of both algorithms tractable for datasets containing tens of thousands of candidate loop closures, the full problem solution (i.e., selecting k edges out of all c candidate edges) was compared with an approach that randomly partitioned the candidate edges into multiple smaller batches. For the KITTI dataset, from each batch of 25 candidates, 10 edges were selected. Similarly, for the Atlas5K dataset, 10 edges were selected for each random batch of 1300 candidates. These batch sizes and sampling rate of 10 edges per batch were chosen so that the maximum edge selection budget k used in our experiments (see the x-axis of Figures 16 and 17) was spent after all batches were examined, enabling a comparison with the full problem solution. This batch approach additionally serves the purpose of simulating a scenario where
+
+26
+
+The International Journal of Robotics Research 00(0)
+
+Figure 14. Greedy k-ESP on the Intel Research Lab Dataset. In (a), the horizontal axis shows the number of loop-closure edges selected by the greedy algorithm. The base graph here is the odometry-only subgraph. The red curve (marked by triangles) shows the value of the log-determinant of the information matrix at the MLE. The blue curve (marked by circles) shows the approximated Dcriterion computed only using the graphical structure of the problem. The box plot in (b) gives a summary of the relative error (%) defined in (39) between the 895 data points shown in (a).
+
+intermittent availability of communication and/or the sequential acquisition of measurements produces smaller problem instances. We also include results for a baseline edge selection strategy that simply chooses a completely random subset of k edges.
+According to Figure 16(a), greedy edge selection based on the proposed objective function (WST) performs nearly as well as picking edges greedily based on the observed Dcriterion, once again indicating that WST provides a suitable proxy for D-optimal measurement selection. For both objective functions, the batch approach incurs a slight performance penalty, but is still superior to the random baseline. Figure 16(b) demonstrates that WST is cheaper to compute and, thus, runs significantly faster than the D-criterion for both full and batch algorithm variants. Even on a relatively small dataset such as KITTI, the batch approach provides significant runtime savings for both objective functions.
+Since the Atlas datasets are much larger and denser than the KITTI dataset, the runtime savings in Figure 17(b) associated with the batch approach are much more significant. Computing the WST objective function is also significantly faster than computing the D-criterion for both full and batch approaches. Figure 17(a) demonstrates that the batch approach does not reduce solution quality significantly, and that the WST is once again a meaningful surrogate for D-criterion maximization.
+9.3. D-optimality-aware SLAM front-end
+In this section, we evaluate the proposed D-optimalityaware SLAM front-end of Section 8.4 using both the
+
+KITTI and Atlas datasets. Owing to the random nature of potential loop closures in this setting, we compare the performance of the greedy algorithm based on expected WST (68) with the greedy algorithm applied to an objective function proposed by Carlone and Karaman (2017):
+X ~fD : E 7! log det (Iinit + peIe) À log det Iinit ð71Þ
+e2E
+in which pe is the occurrence probability of potential loop closure e. We took the valid (i.e., true) loop closures selected by each algorithm, and evaluated their resulting Dcriterion using the best available linearization point (ground truth for synthetic data, and the MLE using all loop closures for KITTI). This was also done for a random potential measurement selection baseline.
+Figure 18(a) displays the results for the KITTI dataset. In spite of the fact that the D-criterion greedy algorithm is aiming to explicitly maximize the D-criterion, our WST objective function provides comparable results. Furthermore, the timing results in Figure 18(b) and Table 2 indicate that the WST function is nearly an order of magnitude faster on this dataset. The batch algorithms also retain performance similar to the full greedy solutions while requiring less runtime. In this dataset, batches of 25 candidate edges were formed, and 10 edges were greedily selected from each batch.
+Note that the D-criterion improvement from using a D-optimality-aware front-end strategy over the random baseline in Figure 18(a) is greater than the improvement in the back-end case of Figure 16(a). This is because the backend task has no invalid loop closures (i.e., potential candidates that did not correspond to true loop closures), whereas
+
+Khosoussi et al.
+
+27
+
+Figure 15. Greedy design for k loop closures (out of 895). Loop-closure edges are shown in blue, and odometry measurements are shown in black. Red circles are the robot poses. See https://youtu.be/5JZF2QiRbDE for the complete evolution of pose graphs designed by the greedy algorithm.
+
+28
+
+The International Journal of Robotics Research 00(0)
+
+Figure 16. Comparison of D-criterion (a) and runtime (b) for the full and batch variants on the back-end k-ESP scenario (only valid edges as candidates) with the KITTI dataset.
+
+Figure 17. Comparison of D-criterion (a) and runtime (b) for the full and batch variants on the back-end k-ESP scenario (only valid edges as candidates) on the Atlas5K dataset.
+
+Figure 18. Comparison of D-criterion (a) and runtime (b) for the full and batch variants of WST and D-criterion greedy algorithms for the front-end SLAM scenario on the KITTI dataset.
+
+Khosoussi et al.
+
+29
+
+Figure 19. Comparison of full and batch greedy strategies on the Atlas3K simulated dataset for the D-optimality-aware front-end task. In the batch algorithms, 10 edges were selected from random batches of 1300.
+
+Figure 20. Comparison of full and batch greedy strategies on the Atlas5K simulated dataset for the D-optimality-aware SLAM frontend task. In the batch algorithms, 10 edges were selected from random batches of 1300.
+
+in the front-end task the greedy algorithms take the edge probability into account when selecting edges, while the random baseline selects a number of invalid potential loop closures.
+Figures 19 and 20 display the performance of the various algorithms on two of the Atlas datasets. Since ground truth is available, the absolute trajectory error (ATE) is presented in addition to the D-criterion with respect to the groundtruth trajectory. In Figures 19(a) and 20(a), the WST objective function performs similarly to the observed D-criterion in terms of the (true; i.e., evaluated at the ground truth) Dcriterion, while only requiring a fraction of the runtime (see Section 9.4 for further details). The same is true in terms of the ATE in Figures 19(c) and 20(c). In the batch variant, a mere 10 edges were selected for each random batch of 1300 candidates. The slight performance decrease caused by partitioning the data into batches is acceptable, especially considering the greatly reduced runtimes reported in Figures 20(b) and 19(b).
+Similar to the KITTI data, the performance improvement in Figures 19 and 20 stemming from use of the greedy algorithms over the random baseline is larger in the k-RESPbased probabilistic SLAM front-end case than the back-end experiments in Figure 17(a). Visual inspection indicates that the improvement for the Atlas datasets is even greater, owing to the fact that the synthetic probabilities are exact,
+
+as opposed to the normalized visual similarity scores used for KITTI. This allows greater accuracy in computing the expected gain for candidate edges when running the greedy algorithms.
+
+9.4. Runtime
+
+Solving the convex relaxation of k-ESP using YALMIP and
+
+SDPT3 scales poorly as the number of poses/vertices n
+
+increases. In the Intel Research Lab dataset (n = 943), the
+
+runtime is between 10 and 30 seconds for different values of
+
+c. For n = 3500 (Manhattan dataset) and n = 10, 000
+
+(City10K),
+
+the
+
+runtime
+
+is
+
+)
+
+10
+
+11
+minutes.
+
+To
+
+improve
+
+the
+
+scalability of this scheme, one needs to leverage the struc-
+
+tures that are not being exploited by general-purpose tools
+
+such as YALMIP and SDPT3. In practice, the convex relaxa-
+
+tion approach is only useful for certifying the quality of other
+
+designs (e.g., greedy), which is usually done offline.
+
+Figure 22 shows the runtimes for three benchmark pose-
+
+graph datasets, namely Intel Research Lab, Manhattan, and
+
+City10K with, respectively, 943, 3500, and 10, 000 poses.
+
+The greedy algorithm is implemented in MATLAB, does
+
+not exploit rank-one updates of the Cholesky factor
+
+(Algorithm 4), and uses lazy evaluations (Krause and
+
+Golovin, 2012; Minoux, 1978) to speed up the algorithm.
+
+The impact of this improvement is illustrated in Figure 21.
+
+30
+
+The International Journal of Robotics Research 00(0)
+
+Figure 21. The na¨ıve greedy algorithm needs to evaluate c À i + 1 edges in its ith round. Lazy evaluations (Krause and Golovin, 2012; Minoux, 1978) can reduce this number significantly. This figure shows the percentage of remaining edges in each round evaluated by the lazy greedy algorithm for c = 500 and k = 250.
+
+Figure 22. CPU time (s) for (a) c = 20, (b) c = 200, and (c) c=2-ESP using the proposed greedy algorithm.
+
+According to this figure, after the first few rounds, the lazy greedy algorithm can select the best candidate by just evaluating less than 10% of the remaining candidates.
+The impact of the number of poses n on the runtime of the greedy algorithm can be seen in Figure 22. As expected, the runtime of the greedy algorithm scales much better with n than that of the proposed convex relaxation scheme. Figure 22(a) and (b) show the runtime of greedy for c = 20 and 200, respectively. Figure 22(c) shows the runtime of greedy in c=2-ESP as a function of c. Note that in online applications, one can control the runtime of greedy by controlling the number of candidate edges c (i.e., batch size in the ‘‘batch’’ experiments presented earlier). Therefore, by periodically pruning measurements one can control the runtime of greedy measurement selection. Needless to say, more informative edges will be selected if we expand the candidate set.
+Table 2 summarizes the runtime of the k-RESP algorithms used in the D-optimality-aware front-end experiments. The table displays full and batch greedy runtimes for both D-criterion and WST objective functions after each has selected 150 edges. The percentage of edges checked is also displayed, as this influences the fraction of candidate sensor registrations that would be attempted, further
+
+affecting the runtime. WST is consistently far faster than the D-criterion in both the full and batch algorithm variants. The reduction in g2o iteration time incurred by the full WST selection is also given, demonstrating further computation savings provided by maintaining sparsity through subselection of candidate edges.
+In addition to optimizing our current implementation, we can speed up the greedy algorithm by taking advantage of two key structures.
+1. In our current implementation, we factorize the reduced Laplacian from scratch in each round of the greedy algorithm. As proposed earlier (Algorithm 4), it would be more efficient if we instead update the Cholesky factor recursively via rank-one updates. Unfortunately, cholupdate in MATLAB does not support sparse matrices. This functionality, however, is provided by CHOLMOD (Chen et al., 2008) and CSparse (Davis, 2006) and can be utilized in a C/C++; implementation to further speed up the greedy algorithm.
+2. In its ith round, the greedy algorithm solves ci linear systems, with a single triangular coefficient matrix and ci different right-hand sides where ci = c À i + 1.
+
+Khosoussi et al.
+
+31
+
+These triangular linear systems can be solved in paral-
+12
+lel on multiple CPU/GPU cores. Exploiting this embarrassingly parallel structure of the greedy algorithm would dramatically reduce the runtime.
+10. Conclusion and future work
+In this paper, we have explored and exploited the overlooked interplay between the graphical and estimationtheoretic facets of SLAM as an EoG problem. First, a theoretical explanation was presented for the empirical observations made by Olson and Kaess (2009) regarding the impact of average degree on overfitting. We then highlighted the intrinsic connection between the FIM and the Laplacian matrix in several EoG problems, including SLAM. This observation paved the way to reveal intimate connections between different notions of graph connectivity and estimation reliability. Among them, we focused particularly on the relation between the WST and the Dcriterion. Our theoretical analysis was empirically validated through extensive experimental evaluation based on publicly available real and synthetic SLAM datasets. This key insight makes it possible to reason about the D-criterion in SLAM based only on the weighted tree connectivity of the graph underneath. Consequently, we studied the combinatorial optimization problem of designing sparse t-optimal graphs. Characterizing t-optimal graphs, even in simpler settings, remains an open problem and, to the best of the authors’ knowledge, no efficient algorithm for synthesizing such graphs in the general case is known. We instead presented a complementary pair of efficient approximation algorithms with provable guarantees and near-optimality certificates. This was achieved by establishing a number of new theoretical results, including log-submodularity of the WST as a function of graph edges. To the best the authors’ knowledge, this result is new in graph theory. We then leveraged this structure to show that the greedy algorithm is a constant-factor approximation algorithm based on the seminal work of Nemhauser et al. (1978). Our second approximation algorithm is based on a convex relaxation approach for sensor selection proposed by Joshi and Boyd (2009). We provided new intuitive explanations for this relaxation and a natural rounding scheme. Our approximation algorithms were extended to two additional settings, namely ARGs and a dual narrative. We then applied our algorithmic framework to measurement selection problems in SLAM. The performance of the proposed framework was extensively evaluated using randomly generated graphs, realistic simulations, and real benchmark datasets. It was demonstrated that the proposed graphical approach exhibits comparable performance to D-optimal designs, while being significantly faster and robust to convergence/ linearization errors. Our empirical observations indicate that in almost all cases, the greedy algorithm can find better approximate solutions and is faster than the proposed
+
+convex relaxation scheme. However, the latter still plays a crucial role in our framework by providing better nearoptimality certificates which are used to certify the quality of greedy solutions.
+The near-t-optimal graph synthesis framework presented in this work can be readily used in many other domains where maximizing the number of spanning trees is desired (often as a measure of network robustness). For instance, a well-known result in network reliability theory indicates that, in the so-called all-terminal reliability model, if a uniformly most reliable network exits, it must have the maximum tree connectivity among all graphs with the same size (Bauer et al., 1987; Boesch et al., 2009; Myrvold, 1996). Moreover, Cheng (1981) noted that D-optimal incomplete block designs in statistics are associated with t-optimal concurrence graphs (see Bailey and Cameron, 2009: for a survey). See also Gutman et al. (1983), Brown et al. (1996), and Kim et al. (2013) for applications in chemistry and RNA modeling.
+We plan to investigate an intriguing overlap between the parameters that emerged from Theorem 3 and those that emerged from a convergence analysis due to Carlone (2013) as part of our future work. Preliminary results suggest that this theorem can be extended to 3D SLAM. This extension will be examined in future work. Improving the computational complexity of the greedy algorithm is another avenue for future work. Our approach has been recently adopted by Li et al. (2018) who proposed a faster greedy algorithm with an approximation ratio of (1 À 1=e À ) for any positive . Finally, we are ultimately interested in a seamless incorporation of graph topology into planning and decision-making pipelines beyond measurement selection.
+Acknowledgments
+The authors would like to thank Ku¨mmerle et al. (2011) for g2o, as well as the Robotics Data Set Repository (Radish) (Howard and Roy, 2003), C. Stachniss, D. Ha¨hnel, E. Olson, M. Kaess, Y. Latif, and N. Su¨nderhauf for original and preprocessed datasets that were used in this work. The authors also gratefully acknowledge Yulun Tian for assistance with experiments.
+Funding
+This research was supported in part by the Australian Government through the Australian Research Council’s Discovery Projects funding scheme (project DP120102786), by the NASA Convergent Aeronautics Solutions project Design Environment for Novel Vertical Lift Vehicles (DELIVER), and by ONR under MURI program award N000141110688 and BRC award N000141712072.
+Notes
+1. Extending this model and our following results to the 2D feature-based SLAM problem is straightforward.
+2. Note that here we do not make any other assumptions regarding the structure of the noise covariance matrix S.
+3. Note that parallel edges can be replaced by a single edge weighted by the sum of the weights.
+
+32
+
+The International Journal of Robotics Research 00(0)
+
+4. Note that p should not be confused with the notation we used to refer to the position of a robot throughout its trajectory. We use p instead of p to distinguish between the integer and fractional values.
+5. For now, we ignore the fact that the rounded solution may violate the cardinality constraint.
+6. In most cases, we can verify all k potential loop closures using fewer than k data exchanges. The problem of interrobot loop-closure detection under communication constraints is studied in (Tian et al., 2018).
+7. Linearization may cause other problems, see Section 8.5. 8. In the SLAM literature, these terms mean that the pruned
+covariance matrix is ‘‘greater’’ than the original covariance matrix (Loewner order), i.e., we do not underestimate belief uncertainty. 9. It is important to note that this case (the expression in Theorem 3) is different from the case in which there are multiple (parallel) edges (with different weights) between two vertices. In the latter case, we can simply replace parallel edges with a single edge whose weight is equal to the sum of parallel edge weights. 10. The presented approximate flop counts are derived for the worst case of dense matrices; counting flops for sparse pose graphs is too complex as it depends on the sparsity pattern, heuristic reordering, etc. 11. We stopped SDPT3 after this time. 12. This idea can be used alongside lazy evaluation (Minoux, 1978) by guessing the number of remaining candidates that are needed to be evaluated based on empirical observations, and solving the corresponding triangular linear systems in parallel.
+References
+Bailey RA and Cameron PJ (2009) Combinatorics of optimal designs. Surveys in Combinatorics 365: 19–73.
+Bailey T and Durrant-Whyte H (2006) Simultaneous localization and mapping (slam): Part II. IEEE Robotics and Automation Magazine 13(3): 108–117.
+Barooah P and Hespanha JP (2007) Estimation on graphs from relative measurements. IEEE Control Systems 27(4): 57–74.
+Bauer D, Boesch FT, Suffel C and Van Slyke R (1987) On the validity of a reduction of reliable network design to a graph extremal problem. IEEE Transactions on Circuits and Systems 34(12): 1579–1581.
+Boesch FT, Satyanarayana A and Suffel CL (2009) A survey of some network reliability analysis and synthesis results. Networks 54(2): 99–107.
+Boyd S and Vandenberghe L (2004) Convex optimization. Cambridge: Cambridge University Press.
+Brown TJ, Mallion RB, Pollak P and Roth A (1996) Some methods for counting the spanning trees in labelled molecular graphs, examined in relation to certain fullerenes. Discrete Applied Mathematics 67(1): 51–66.
+Cadena C, Carlone L, Carrillo H, et al. (2016) Simultaneous localization and mapping: Present, future, and the robustperception age. Preprint arXiv:1606.05830.
+Carlevaris-Bianco N, Kaess M and Eustice RM (2014) Generic node removal for factor-graph SLAM. IEEE Transactions on Robotics 30(6): 1371–1385.
+Carlone L (2013) Convergence analysis of pose graph optimization via gauss-newton methods. In: Proceedings of the
+
+IEEE International Conference on Robotics and Automation (ICRA). Carlone L, Aragues R, Castellanos JA and Bona B (2014) A fast and accurate approximation for planar pose graph optimization. The International Journal of Robotics Research 33: 965–987. Carlone L and Censi A (2014) From angular manifolds to the integer lattice: Guaranteed orientation estimation with application to pose graph optimization. IEEE Transactions on Robotics 30(2): 475–492. Carlone L and Karaman S (2017) Attention and anticipation in fast visual-inertial navigation. In: 2017 IEEE International Conference on Robotics and Automation (ICRA). IEEE, pp. 3886– 3893. Chen Y, Davis TA, Hager WW and Rajamanickam S (2008) Algorithm 887: Cholmod, supernodal sparse Cholesky factorization and update/downdate. ACM Transactions on Mathematical Software 35(3): 22. Cheng CS (1981) Maximizing the total number of spanning trees in a graph: two related problems in graph theory and optimum design theory. Journal of Combinatorial Theory, Series B 31(2): 240–248. Chli M and Davison AJ (2009) Active matching for visual tracking. Robotics and Autonomous Systems 57(12): 1173–1187. Choudhary S, Indelman V, Christensen HI and Dellaert F (2015) Information-based reduced landmark SLAM. In: 2015 IEEE International Conference on Robotics and Automation (ICRA). IEEE, pp. 4620–4627. Cieslewski T and Scaramuzza D (2017) Efficient decentralized visual place recognition using a distributed inverted index. IEEE Robotics and Automation Letters 2(2): 640–647. Cohen JE (1986) Connectivity of finite anisotropic random graphs and directed graphs. Mathematical Proceedings of the Cambridge Philosophical Society 99: 315–330. Davis TA (2006) Direct methods for sparse linear systems, volume 2. Philadelphia, PA: SIAM. Davison AJ (2005) Active search for real-time vision. In: Tenth IEEE International Conference on Computer Vision, 2005 (ICCV 2005), volume 1. IEEE, pp. 66–73. Dellaert F and Kaess M (2006) Square root SAM: Simultaneous localization and mapping via square root information smoothing. The International Journal of Robotics Research 25(12): 1181–1203. Dong J, Nelson E, Indelman V, Michael N and Dellaert F (2015) Distributed real-time cooperative localization and mapping using an uncertainty-aware expectation maximization approach. In: 2015 IEEE International Conference on Robotics and Automation (ICRA). IEEE, pp. 5807–5814. Duckett T, Marsland S and Shapiro J (2000) Learning globally consistent maps by relaxation. In: Proceedings ICRA’00: IEEE International Conference on Robotics and Automation, 2000, volume 4. IEEE, pp. 3841–3846. Duckett T, Marsland S and Shapiro J (2002) Fast, on-line learning of globally consistent maps. Autonomous Robots 12(3): 287–300. Eade E, Fong P and Munich ME (2010) Monocular graph SLAM with complexity reduction. In: 2010 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS). IEEE, pp. 3017–3024. Frey KM, Steiner TJ and How JP (2018) Complexity analysis and efficient measurement selection primitives for high-rate graph
+
+Khosoussi et al.
+
+33
+
+SLAM. In: IEEE International Conference on Robotics and Automation (ICRA). https://arxiv.org/abs/1709.06821. Friedman J, Hastie T and Tibshirani R (2008) Sparse inverse covariance estimation with the graphical LASSO. Biostatistics 9(3): 432–441. Ga´lvez-Lo´pez D and Tardos JD (2012) Bags of binary words for fast place recognition in image sequences. IEEE Transactions on Robotics 28(5): 1188–1197. Geiger A, Lenz P, Stiller C and Urtasun R (2013) Vision meets robotics: The KITTI dataset. The International Journal of Robotics Research 32(11): 1231–1237. Ghosh A, Boyd S and Saberi A (2008) Minimizing effective resistance of a graph. SIAM Review 50(1): 37–66. Giamou M, Khosoussi K and How JP (2018) Talk resourceefficiently to me: Optimal communication planning for distributed loop closure detection. In: IEEE International Conference on Robotics and Automation (ICRA). https://arxiv.org/abs/ 1709.06675 . Gilbert EN (1959) Random graphs. The Annals of Mathematical Statistics 30(4): 1141–1144. Godsil C and Royle G (2001) Algebraic graph theory (Graduate Texts in Mathematics Series). London: Springer. Gutman I, Mallion R and Essam J (1983) Counting the spanning trees of a labelled molecular-graph. Molecular Physics 50(4): 859–877. Ha¨hnel D (2003) Intel Research Lab dataset. https://svn.openslam. org/data/svn/g2o/trunk/data/2d/intel/intel.g2o. (accessed 10 May 2017). Hochbaum DS (1996) Approximation algorithms for NP-hard problems. PWS Publishing Co. Horn RA and Johnson CR (1990) Matrix analysis. Cambridge: Cambridge University Press. Howard A and Roy N (2003) The robotics data set repository (radish). http://radish.sourceforge.net/ . Huang G, Kaess M and Leonard JJ (2013) Consistent sparsification for graph optimization. In: 2013 European Conference on Mobile Robots (ECMR). IEEE, pp. 150–157. Ila V, Porta JM and Andrade-Cetto J (2010) Information-based compact pose SLAM. IEEE Transactions on Robotics 26(1): 78–93. Joshi S and Boyd S (2009) Sensor selection via convex optimization. IEEE Transactions on Signal Processing 57(2): 451–462. Kaess M (2008) Incremental Smoothing and Mapping. Ph.D. Thesis, Georgia Institute of Technology. Kaess M and Dellaert F (2009) Covariance recovery from a square root information matrix for data association. Robotics and Autonomous Systems 57(12): 1198–1210. Kaess M, Ranganathan A and Dellaert F (2008) iSAM: Incremental smoothing and mapping. IEEE Transactions on Robotics 24(6): 1365–1378. Kelmans AK (1996) On graphs with the maximum number of spanning trees. Random Structures and Algorithms 9(1-2): 177–192. Khosoussi K, Huang S and Dissanayake G (2014) Novel insights into the impact of graph structure on SLAM. In: Proceedings of IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2014, pp. 2707–2714. Khosoussi K, Huang S and Dissanayake G (2016a) Tree-connectivity: Evaluating the graphical structure of SLAM. In: 2016 IEEE International Conference on Robotics and Automation (ICRA). IEEE, pp. 1316–1322. Khosoussi K, Sukhatme GS, Huang S and Dissanayake G (2016b) Designing sparse reliable pose-graph SLAM: A
+
+graph-theoretic approach. In: 2016 International Workshop on the Algorithmic Foundations of Robotics (WAFR). Kim N, Petingi L and Schlick T (2013) Network theory tools for RNA modeling. WSEAS Transactions on Mathematics 9(12): 941. Konolige K, Grisetti G, Kummerle R, Burgard W, Limketkai B and Vincent R (2010) Efficient sparse pose adjustment for 2D mapping. In: 2010 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS). IEEE, pp. 22–29. Krause A and Golovin D (2012) Submodular function maximization. Tractability: Practical Approaches to Hard Problems 3: 19. Kretzschmar H and Stachniss C (2012) Information-theoretic compression of pose graphs for laser-based SLAM. The International Journal of Robotics Research 31: 1219–1230. Ku¨mmerle R, Grisetti G, Strasdat H, Konolige K and Burgard W (2011) g2o: A general framework for graph optimization. In: 2011 IEEE International Conference on Robotics and Automation (ICRA). IEEE, pp. 3607–3613. Leskovec J, Krause A, Guestrin C, Faloutsos C, VanBriesen J and Glance N (2007) Cost-effective outbreak detection in networks. In: Proceedings of the 13th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. New York: ACM Press, pp. 420–429. Li H, Patterson S, Yi Y and Zhang Z (2018) Maximizing the number of spanning trees in a connected graph. Preprint arXiv:1804.02785. Lo¨fberg J (2004) Yalmip: A toolbox for modeling and optimization in MATLAB. In: Proceedings of the CACSD Conference. Taipei, Taiwan. http://users.isy.liu.se/johanl/yalmip . Mazuran M, Burgard W and Tipaldi GD (2016) Nonlinear factor recovery for long-term SLAM. The International Journal of Robotics Research 35(1–3): 50–72. Meyer CD (2000) Matrix analysis and applied linear algebra. Philadelphia, PA: SIAM. Minoux M (1978) Accelerated greedy algorithms for maximizing submodular set functions. In: Optimization Techniques. New York: Springer, pp. 234–243. Mur-Artal R, Montiel JMM and Tardos JD (2015) ORB-SLAM: a versatile and accurate monocular SLAM system. IEEE Transactions on Robotics 31(5): 1147–1163. Myrvold W (1996) Reliable network synthesis: Some recent developments. In: Proceedings of International Conference on Graph Theory, Combinatorics, Algorithms, and Applications. Nemhauser GL, Wolsey LA and Fisher ML (1978) An analysis of approximations for maximizing submodular set functions - I. Mathematical Programming 14(1): 265–294. Olson E (2008) Robust and Efficient Robotic Mapping. PhD Thesis, Massachusetts Institute of Technology, Cambridge, MA, USA. Olson E and Kaess M (2009) Evaluating the performance of map optimization algorithms. In: RSS Workshop on Good Experimental Methodology in Robotics, p. 40. Paull L, Huang G and Leonard JJ (2016) A unified resourceconstrained framework for graph SLAM. In: 2016 IEEE International Conference on Robotics and Automation (ICRA). IEEE, pp. 1346–1353. Paull L, Huang G, Seto M and Leonard JJ (2015) Communication-constrained multi-AUV cooperative SLAM. In: 2015 IEEE International Conference on Robotics and Automation (ICRA). IEEE, pp. 509–516.
+
+34
+
+The International Journal of Robotics Research 00(0)
+
+Petingi L and Rodriguez J (2002) A new technique for the characterization of graphs with a maximum number of spanning trees. Discrete Mathematics 244(1): 351–373.
+Pirani M and Sundaram S (2014) Spectral properties of the grounded Laplacian matrix with applications to consensus in the presence of stubborn agents. In: American Control Conference (ACC), 2014. IEEE, pp. 2160–2165.
+Pukelsheim F (1993) Optimal design of experiments, volume 50. Philadelphia, PA: SIAM.
+Shamaiah M, Banerjee S and Vikalo H (2010) Greedy sensor selection: Leveraging submodularity. In: 49th IEEE Conference on Decision and Control (CDC). IEEE, pp. 2572–2577.
+Shier D (1974) Maximizing the number of spanning trees in a graph with n nodes and m edges. Journal Research National Bureau of Standards, Section B 78: 193–196.
+Sorenson H (1980) Control and systems theory. In: Parameter estimation: principles and problems. New York: Dekker.
+Thrun S, Liu Y, Koller D, Ng AY, Ghahramani Z and DurrantWhyte H (2004) Simultaneous localization and mapping with sparse extended information filters. The International Journal of Robotics Research 23(7-8): 693.
+Tian Y, Khosoussi K, Giamou M, How JP and Kelly J (2018) Near-optimal budgeted data exchange for distributed loop closure detection. In: Proceedings of Robotics: Science and Systems. Pittsburgh, PA, accepted.
+Tu¨tu¨ncu¨ RH, Toh KC and Todd MJ (2003) Solving semidefinitequadratic-linear programs using sdpt3. Mathematical programming 95(2): 189–217.
+Vallve J, Sola J and Andrade-Cetto J (2018) Graph SLAM sparsification with populated topologies using factor descent optimization. IEEE Robotics and Automation Letters, in press.
+Vandenberghe L, Boyd S and Wu SP (1998) Determinant maximization with linear matrix inequality constraints. SIAM Journal on Matrix Analysis and Applications 19(2): 499–533.
+Vial J, Durrant-Whyte H and Bailey T (2011) Conservative sparsification for efficient and consistent approximate estimation. In: 2011 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS). IEEE, pp. 886–893.
+Wang G (1994) A proof of Boesch’s conjecture. Networks 24(5): 277–284.
+Wang Y, Xiong R, Li Q and Huang S (2013) Kullback–Leibler divergence based graph pruning in robotic feature mapping. In: 2013 European Conference on Mobile Robots (ECMR). IEEE, pp. 32–37.
+Wolsey LA (1982) An analysis of the greedy algorithm for the submodular set covering problem. Combinatorica 2(4): 385–393.
+
+Appendix A. Preliminaries
+For the reader’s convenience, here we briefly review a number of important results, terminologies, and preliminaries from several areas that are used in this work.
+
+A.1. Graph theory
+
+Consider a simple undirected graph G = (V, E). Here V is
+
+the set of vertices and E &
+
+V 2
+
+is the edge set of G. V(G)
+
+and E(G) refer to, respectively, the vertex set and edge set
+
+of graph G. Moreover, n(G) ¼D jV(G)j and m(G) ¼D jE(G)j. Vertex u is adjacent to vertex v (u ; v) if and only if there is an edge connecting u to v. For any vertex v 2 V, N(v) & V denotes the set of all vertices adjacent to v. We generally assume the vertices are labeled according to V = ½n for an integer n. Let w : E ! R be a weight function that assigns a real weight to any edge of G. Then (V, E, w) is an edge-weighted graph (or, simply, a weighted graph). In directed graphs, each edge has an orientation and thus is represented by an ordered pair, i.e., ~G = (V, ~E) where ~E & V × V. An undirected graph is connected if and only if there is a path between any two vertices. A directed graph is strongly connected if and only if there is a directed path between any two vertices. Similarly, a directed graph is weakly connected if there is a path between any two vertices after ignoring the edge orientations. H = (S, F) is a subgraph of G = (V, E) if and only if S & V and F & E. H is a spanning subgraph of G if and only if and S = V. Moreover, H is an induced subgraph of G if and only if
+
+F = ffu, vg : u, v 2 S, fu, vg 2 Eg
+
+ð72Þ
+
+A connected component of an undirected graph G is a connected induced subgraph of G whose set of vertices is not adjacent to the other vertices of G. The number of connected components of G is shown by nc(G). The degree of vertex v 2 V, deg (v), is defined as the number of edges incident to
+
+v, i.e., deg (P v) ¼D jN(v)j. From the handshaking lemma we know that v2V deg (v) = 2jEj. In weighted graphs, the
+
+weighted degree of vertex v 2 V is defined as
+
+degw (v)
+
+¼D
+
+P u2N(v) w(u, v).
+
+An
+
+undirected
+
+tree
+
+is
+
+a
+
+graph
+
+that is (i) connected and (ii) does not have a cycle. Removing
+
+any edge from a tree results in a disconnected graph; thus,
+
+trees are minimally connected graphs. We generally use T for
+
+referring to trees. The complete graph K (or Kn when
+
+jVj = n) is the graph whose any two vertices are connected
+
+with an edge, i.e., E(K) =
+
+V 2
+
+. A spanning tree of G is a
+
+spanning subgraph of G that is a tree. To simplify our notation, let us assume n(G) = n and m(G) = m. The degree
+
+matrix D 2 Rn × n is defined as D ¼D diag( deg (v1),
+. . . , deg (vn)) where V(G) = fv1, . . . , vng. The adjacency matrix N 2 f0, 1gn × n is defined as follows:
+
+&
+
+Nu, v =
+
+1 0
+
+if u ; v otherwise
+
+The incidence matrix As 2 fÀ1, 0, 1gn × m is defined for directed graphs. Let E = fe1, . . . , emg where ei ¼D (ui, vi). Then we have
+
+8 < +1
+
+Asu, i
+
+=
+
+:
+
+À1 0
+
+if 9v 2 V:ei = (v, u) 2 E if 9v 2 V:ei = (u, v) 2 E
+otherwise
+
+Khosoussi et al.
+
+35
+
+Sometimes we refer to the incidence matrix of undirected graphs. In such cases, we have implicitly assumed an arbitrary orientation is assigned to the edges of graph. The graph Laplacian (or Kirchhoff) matrix Ls 2 Rn × n is defined as Ls ¼D AsAs = D À N. Deleting a row/column from the incidence and Laplacian matrices results in the following matrices. The reduced incidence matrix A is the matrix obtained by deleting the row associated to a vertex from the incidence matrix. The vertex associated to the deleted row is usually referred to as the anchored or grounded vertex. In general, it is possible to have multiple anchors. The reduced Laplacian (also known as the Dirichlet or grounded Laplacian) matrix L is the matrix obtained by deleting the column and row associated to a vertex from the Laplacian matrix. Similar to what we saw earlier regarding the relation between As and Ls, L = AA for the same anchor(s).
+Theorem 8. Let l1(Ls) ł l2(Ls) ł Á Á Á ł ln(Ls) be the spectrum of the Laplacian matrix Ls of an arbitrary graph. The following statements hold.
+1. The Laplacian matrix is positive semidefinite, i.e., li(Ls) ø 0 for all i 2 ½n.
+2. The Laplacian matrix has at least one zero eigenvalue associated to the 1n eigenvector, i.e., Ls1n = 0.
+3. The multiplicity of the zero eigenvalue is equal to the number of connected components of graph nc(G), i.e., li(Ls) = 0 for all i 2 ½nc(G) and lnc(G) + 1(Ls).0.
+
+Theorem 9. The reduced incidence matrix A is full row rank if and only if the corresponding graph is weakly connected.
+The following corollary directly follows Theorem 9 and the fact that L = AA .
+Corollary 13. The reduced Laplacian matrix L is positive definite if and only if the corresponding graph is connected.
+Theorem 10 (Kirchhoff’s matrix-tree theorem). Let L and Ls be, respectively, the reduced Laplacian and the Laplacian matrix of any simple undirected graph G after anchoring an arbitrary vertex out of its n vertices. The following statements are true:
+
+1. 2.
+
+t(G) t(G)
+
+= =
+
+1ndQet ni(=L2);li(Ls).
+
+Theorem 11. (Cayley’s formula) We have
+
+t(Kn) = nnÀ2
+
+ð73Þ
+
+Vw : TG ! R ø 0
+
+ð74Þ
+
+Y
+
+T 7!
+
+w(e)
+
+ð75Þ
+
+e2E(T )
+
+tFwu(rGth) e¼DrmPorTe2, TwG Ve wd(eTfi)n. e the weighted number of trees as
+Theorem 12 (Weighted matrix-tree theorem). For G = (V, E, w) where w : E ! R.0 we have tw(G) = det AWA in which W ¼D diag(w(e1), . . . , w(em)).
+For edge-weighted graphs, L = AWAT is the reduced Laplacian matrix. Thus, unweighted graphs can be thought of the case where w(e) = 1 for all e 2 E.
+Lemma 5. Let Guv be the graph obtained by adding fu, vg 62 E with weight wuv to G = (V, E, w). Let L be the reduced Laplacian matrix and auv be the corresponding column of the reduced incidence matrix of G after anchoring an arbitrary vertex. If G is connected,
+
+tw(Guv) = tw(G) Á (1 + wuvDGuv)
+
+ð76Þ
+
+where DGuv ¼D aTuvLÀ1auv is the effective resistance between u and v (see, e.g., Ghosh et al., 2008).
+
+Proof of Lemma 5. The reduced Laplacian matrix of Guv can be written as Luv = L + wuvauvauvT. Taking the deter-
+
+minant and applying the matrix determinant lemma con-
+
+cludes the proof.
+
+h
+
+Lemma 6. Let G1 be a spanning subgraph of G2. For any w : E(K) ! R ø 0, LwG2 # LwG1 in which LwG is the reduced weighted Laplacian matrix of G when its edges are
+weighted by w.
+
+Proof of Lemma 6. From the definition of the reduced
+
+weighted Laplacian matrix we have
+
+X
+
+LwG2 À LwG1 =
+
+wuvauvauv # 0
+
+fu, vg2E(G2)nE(G1)
+
+ð77Þ
+
+h
+
+A.2. Estimation theory
+
+An estimator x^ of parameter x is called an unbiased estimator iff E½x^ = x.
+
+Theorem 13. (CRLB) Under some regularity conditions
+(Sorenson, 1980), the covariance matrix of any unbiased estimator of x, such as x^, satisfies Cov½x^ # IÀ1(x), where I(x) is the FIM,
+
+I(x) ¼D Ez
+
+∂
+
+∂T
+
+!
+
+log p(z; x) log p(z; x)
+
+∂x
+
+∂x
+
+ð78Þ
+
+Definition 4. (Tree value function). Suppose G = (V, E, w) is a weighted graph with a non-negative weight function. The value of each spanning tree of G is measured by the following function,
+
+Here the expectation is over z and with respect to p(z; x). Note that the FIM depends only on the true value of x and p(z; x), and does not depend on any particular realization of z.
+
+36
+
+The International Journal of Robotics Research 00(0)
+
+An unbiased estimator that achieves CRLB is called an  For any constant c 2 R, g: 2W ! R : A 7! f (A) + c is
+
+efficient estimator.
+
+monotone submodular if and only if f : 2W ! R is
+
+Corollary 14. The following statements are true.
+
+monotone submodular.  For any constant
+
+c 2 R,
+
+g: 2W ! R :
+
+A 7! minff (A), cg is monotone submodular if and
+
+1. The diagonal elements of CRLB are lower bounds for
+
+only if f : 2W ! R is monotone submodular.
+
+the variance of any unbiased estimator for each  If fi: 2W ! R for all i 2 ½n are monotone submodular
+
+2.
+
+parameter. The determinant of CRLB is a lower bound for the determinant of the covariance matrix of any unbiased
+
+
+
+and g:A
+
+wi 7!
+
+Pfonr
+i=1
+
+all i 2 ½n are non-negative, wifi(A) is monotone submodular.
+
+then
+
+If f : 2W ! R is monotone submodular, then for any
+
+estimator.
+
+M & W, g : A 7! f (A [ M) is monotone submodular.
+
+A.3. Submodular maximization
+
+A.4. Linear algebra
+
+For a comprehensive survey of key results in submodular
+set function optimization see Krause and Golovin (2012). Suppose W is a finite ground set. Let j: 2W ! R be a real set function defined over the power set of W. Finally, let F & 2W be the set of feasible subsets of W. Then our goal
+is to solve the following optimization problem:
+
+maximize j(A)
+
+A&W
+
+ð79Þ
+
+subjectto A 2 F
+
+Lemma 7. (Schur’s determinant formula (Meyer, 2000)). If
+
+AÀ1 exists,
+
+!
+
+det
+
+A C
+
+B D
+
+= det A Á det (D À CAÀ1B)
+
+ð82Þ
+
+Lemma 8. For any two N, M 2 Snø 0 we have
+
+det (M + N) ø det (M)
+
+ð83Þ
+
+Definition 5. Suppose W is a finite ground set. For any set function j: 2W ! R:
+
+Proof. It is trivial to verify the lemma when M is singular.
+
+For
+
+M
+
+1
+
+0,
+
+we
+
+can
+
+decompose
+
+M
+
+as
+
+M
+
+=
+
+M M 1 1 22
+
+in
+
+which
+
+M1 2
+
+2
+
+Sn.0.
+
+Then
+
+we
+
+have
+
+1. j is called normalized if and only if j([) = 0; 2. j is called monotone if j(B) ø j(A) for every A and B
+s.t. A & B & W; 3. j is called submodular if and only if for every A and
+B s.t. A & B & W and 8s 2 WnB we have,
+
+det (M + N) = det (M) det (I + MÀ12NMÀ12)) ð84Þ
+
+Yn
+
+= det (M) (1 + l|ﬄiﬄ(ﬄﬄMﬄﬄﬄﬄﬄÀﬄ{12zNﬄﬄMﬄﬄﬄﬄﬄÀﬄﬄﬄ12}) )
+
+ð85Þ
+
+i=1
+
+ø0
+
+ø det (M)
+
+ð86Þ
+
+j(A [ fsg) À j(A) ø j(B [ fsg) À j(B) ð80Þ
+
+4. j is called log-submodular if and only if j is positive and log j is submodular.
+
+Theorem 14 (Nemhauser et al., 1978). Let f : 2W ! R be a normalized monotone submodular. Let OPT be the optimal value of the following problem,
+
+maximize f (A)
+
+A&W
+
+ð81Þ
+
+subject to jAj ł k 2 N
+
+Then, fgreedy ø (1 À 1=e)OPT where fgreedy is the value achieved by the natural greedy algorithm.
+Theorem 15 introduces several operations under which both monotonicity and submodularity are preserved.
+Theorem 15. Both monotonicity and submodularity are preserved under the following operations.
+
+Lemma 9. For any M 2 Sn.0 and N 2 Sn.0, M # N iff NÀ1 # MÀ1.
+
+Proof. Owing to symmetry it suffices to prove that
+
+M # N ) NÀ1 # MÀ1. Multiplying both sides of M # N
+
+by NÀ12 from left and right results in NÀ12MNÀ12 À I # 0.
+
+Therefore, the eigenvalues of NÀ12MNÀ12, which are the
+
+same
+
+as
+
+the
+
+eigenvalues
+
+of
+
+M1 2
+
+NÀ1M12
+
+,
+
+are
+
+at
+
+least
+
+1.
+
+Therefore,
+
+M1 2
+
+NÀ1
+
+M1 2
+
+ÀI
+
+#
+
+0.
+
+Multiplying
+
+both
+
+sides
+
+by
+
+MÀ12 from left and right proves the lemma.
+
+Appendix B. Proofs
+
+Proof of Proposition 1. Let H ¼D (A  Id) denote the measurement function in Rd-Sync. Plugging
+p(z; x) = N(z; Hx, S) into the definition of the FIM (78)
+results in
+
+I = HTSÀ1H
+
+ð87Þ
+
+= (A  Id)(W  Id)(A  Id)
+
+ð88Þ
+
+= (AWA )  Id
+
+ð89Þ
+
+Khosoussi et al.
+
+37
+
+= Lw  Id
+
+ð90Þu
+
+Proof of Proposition 2. The proof is similar to that of Proposition 1. Define H ¼D R (A  Id) . Plugging p(z; x) = N(z; Hx, S) into the definition of the FIM (78) results in
+
+I = HTSÀ1H
+
+ð91Þ
+
+= (A  Id)RSÀ1RT(A  Id)T
+
+ð92Þ
+
+= (A  Id)(W  Id)(A  Id)T
+
+ð93Þ
+
+= (AWAT)  Id
+
+ð94Þ
+
+= Lw  Id
+
+ð95Þ
+
+Note that the ith d × d diagonal block of R (i.e., Ri for
+
+which we have RTi Ri = Id) commutes with that of SÀ1, i.e.,
+
+sÀi 2Id .
+
+u
+
+Proof of Proposition 3. Note that f 8 ¼D f (x8) =
+
+k e k2SÀ1 = cludes the
+
+kek2 in which e ¼D SÀ1=2e ; N(0, I). This conproof as kek2, by definition, is distributed
+
+according to x2dim (z).
+
+u
+
+Proof of Proposition 4. Define H~ ¼D SÀ12H, ~z ¼D SÀ12z, ~c ¼D SÀ12c and ~e ¼D SÀ12e ; N(0, I). The MLE is given by
+
+xH = |(Hﬄ~ﬄﬄﬄﬄﬄﬄHﬄ~{)zÀﬄﬄ1ﬄﬄHﬄ~ﬄﬄﬄ} (~z À ~c)
+
+ð96Þ
+
+H~ y
+
+in which H~ y ¼D (H~ H~ )À1H~ is the Moore–Penrose pseudoinverse of H~ . Now we evaluate f (x) at x = xH,
+
+f (xH) = k z À HxH À c k2SÀ1
+
+ð97Þ
+
+= k ~z À H~ xH À ~ck2
+
+ð98Þ
+
+= k ~z À ~c À H~ H~ y(~z À ~c)k2
+
+ð99Þ
+
+= k (I À H~ H~ y)(~z À ~c)k2
+
+ð100Þ
+
+= k (I À H~ H~ y)(H~ x8 + ~c + ~e À ~c)k2
+
+ð101Þ
+
+= k (I À H~ H~ y)(H~ x8 + ~e)k2
+
+ð102Þ
+
+= k (I À H~ H~ y)~ek2
+
+ð103Þ
+
+Now note that I À H~ H~ y is the orthogonal projection onto
+
+the nullspace of H~ T with dimension r ¼D dim (z) À dim (x).
+
+Let H~ T.
+
+fuigri = 1 be Therefore,
+
+an (I
+
+orthonormal À H~ H~ y)~e =
+
+basis Pr
+i=1
+
+for the nullspace of (uTi ~e)ui. Now note
+
+that
+
+k (I À H~ H~ y)~ek2 = ~eT(I À H~ H~ y)~e
+Xr = ~eT (uTi ~e)ui
+i=1
+
+ð104Þ ð105Þ
+
+Xr = (uTi ~e)2
+i=1
+
+ð106Þ
+
+This concludes the proof since (uTi ~e) ; N(0, 1) and, moreover, (uTi ~e) and (uTj ~e) are independent for i 6¼ j. h
+
+Proof of Proposition 5. Recall that L = AA where A is
+
+the reduced incidence matrix of G. It is clear that
+
+lmin(L) ø 0. L is singular iff the graph is disconnected. Let a be the reduced incidence vector of a new edge. The
+
+reduced Laplacian of graph after adding this new edge is
+
+L + aa . Thus, we need to show that
+
+lmin(L + aa ) ø lmin(L), which follows from Weyl’s inequality (Horn and Johnson, 1990). Now the fact that
+
+lmin(L) is maximized when G is complete follows from the monotonicity of lmin(L) in the edge set. The spectrum of the Laplacian matrix of Kn consists of a zero eigenvalue, and l = n with multiplicity n À 1 (Godsil and Royle,
+
+2001). From Cauchy’s interlace theorem (Godsil and
+
+Royle, 2001: Theorem 9.1.1) it follows that the spectrum
+
+of the reduced Laplacian of Kn consists of lmin(L) = 1, and l = n with multiplicity n À 1. Finally, the last state-
+
+ment follows directly from Pirani and Sundaram (2014:
+
+Theorem 1).
+
+h
+
+Proof of Theorem 1. Recall that the FIM in Rd-Sync and d-dimensional Compass-SLAM is given by I = Lw  Id in which Lw is the reduced weighted Laplacian matrix of the graph. According to Cauchy’s interlace theorem (Godsil
+and Royle, 2001: Theorem 9.1.1), 0\l1(L) ł l2(Lsw). We have
+
+lmax(Cov½xH) = l1(I)À1
+
+ð107Þ
+
+= l1(Lw  Id)À1
+
+ð108Þ
+
+= l1(Lw)À1
+
+ð109Þ
+
+ø l2(Lsw)À1
+
+ð110Þ
+
+The fact
+
+tohtahtelr1s(tLatwe)młenwt mzfoalxlo(wPrsofproosmititohne
+
+above 5).
+
+identity
+
+and
+
+the h
+
+Proof of Theorem 2. Based on Propositions 1 and 2 and the weighted matrix-tree theorem (Theorem 12), we have
+
+log det (Cov½xH) = À log det (I) = À log det (Lw  Id) = À dtw(G)
+Proof of Theorem 3. Let us first define
+
+ð111Þ ð112Þ ð113Þ
+h
+
+P?wp ¼D I À G (Awp LÀwp1Awp  I2)G
+
+ð114Þ
+
+Applying Schur’s determinant formula (Lemma 7) on the top-left block of (18) and using
+
+log det (Lwp  I2) = 2 Á log det Lwp
+
+ð115Þ
+
+38
+
+The International Journal of Robotics Research 00(0)
+
+= 2 Á twp (G)
+
+ð116Þ
+
+results
+where P?wp #
+
+E 0
+
+in ¼D
+
+log det I(x) = 2 Dwp P?wp Dwp . Note since they are
+
+Á twp (G) that Pwp
+
++ ¼D
+
+log det (Lwu + E) I À P?wp # 0 and
+
+orthogonal projections.
+
+Consequently E # 0. To show that (x) ø 0 we just need
+
+to apply Lemma 8 on the above identity:
+
+log det I(x) = 2 Á twp (G) + log det (Lwu + E) ø 2 Á twp (G) + log det Lwu = 2 Á twp (G) + twu (G) = ‘t(G)
+
+ð117Þ ð118Þ ð119Þ ð120Þ
+
+Now we have
+
+(x) ¼D log det I(x) À ‘t(G)
+
+ð121Þ
+
+ł log det (Lwu + Dwp Dwp ) À log det Lwu
+ł log det (Lwu + dI) À log det Lwu = log Yn li(Lwu ) + d i = 1 li(Lwu ) Yn
+= log (1 + d=li(Lwu ))
+i=1
+ł log (1 + d=l1(Lwu ))n
+= n log (1 + d=l1(Lwu ))
+
+ð122Þ ð123Þ ð124Þ
+ð125Þ ð126Þ ð127Þ
+
+Note that (122) follows from applying Fischer’s inequality (Horn and Johnson, 1990) on the FIM (18). Finally, (123) follows from Lemma 8 applied to
+
+log det ( L|ﬄﬄwﬄﬄuﬄﬄ+ﬄﬄﬄ{DzﬄwﬄﬄpﬄﬄDﬄﬄﬄwﬄ}p + d|ﬄIﬄﬄﬄÀﬄﬄﬄﬄD{zwﬄﬄpﬄDﬄﬄﬄﬄwﬄ}p )
+
+10
+
+#0
+
+ð128Þ
+
+respectively; see (19).
+
+Proof of Lemma 1. Let wa : e 7! aw(e) be the scaled
+
+weight function. It is easy to show that twa (G) = anÀ1tw(G).
+
+Therefore, tw(G) ø tw(H) , twa (G) ø twa (H) for any G and
+
+H with n vertices.
+
+h
+
+Proof of Theorem 4.
+
+1. Normalized: By definition Fw([) = tn, w(Einit) À tn, w (Einit) = 0.
+2. Monotone: We need to show that Fw(E [ feg) ø Fw(E). This is equivalent to showing that,
+
+tn, w(Einit [ E [ feg) ø tn, w(Einit [ E)
+
+ð129Þ
+
+Now note that (V, Einit [ E) is connected since (V, Einit) was assumed to be connected. Therefore, we can apply Lemma 5 on the left-hand side of (129); i.e.,
+
+tn, w(Einit [ E [ feg) = tn, w(Einit [ E) + log (1 + weDe) ð130Þ
+Thus we need to show that log (1 + weDe) is non-negative. Since (V, Einit) is connected, L is positive definite. Consequently weDe = weae LÀ1ae.0 and, hence, log (1 + weDe).0. 3. Submodular: Fw is submodular iff for all
+E1 & E2 & E(Kn) and all e 2 E(Kn)nE2,
+Fw(E1 [ feg) À Fw(E1) ø Fw(E2 [ feg) À Fw(E2) ð131Þ
+After canceling out tn, w(Einit) we need to show that
+
+tn, w(E1 [ Einit [ feg) À tn, w(E1 [ Einit) ø tn, w(E2 [ Einit [ feg) À tn, w(E2 [ Einit)
+
+ð132Þ
+
+If e 2 Einit, both sides of (132) become zero. Hence, we can safely assume that e 62 Einit. For convenience, let us define EÃ1 ¼D Ei [ Einit for i = 1,2. Therefore, (132) can be rewritten as
+
+tn, w(EÃ1 [ feg) À tn, w(EÃ1) ø tn, w(EÃ2 [ feg) À tn, w(EÃ2) ð133Þ
+
+Recall that we assumed that (V, Einit) is connected. Thus, (V, EÃi ) is connected for i = 1, 2, and we can apply Lemma 5 on both sides of (133). After doing so we have to show
+that
+
+log (1 + weDGe 1 ) ø log (1 + weDGe 2 )
+
+ð134Þ
+
+where Gi ¼D (V, Ei [ Einit, w) for i = 1, 2. It is easy to see that (134) holds iff DGe 1 ø DGe 2 . Now note that
+
+DGe 1 À DGe 2 = aTe (LÀG11 À LÀG21)ae ø 0
+
+ð135Þ
+
+since LG2 # LG1 (G1 is a spanning subgraph of G2), and therefore according to Lemma 9, LÀG11 # LÀG21.
+h
+
+Proof of Lemma 2. This follows readily from Corollary
+
+13.
+
+h
+
+Proof of Lemma 3. This immediately follows from the fact that pH 2 f0, 1gc is a feasible solution for k-ESP that is
+
+optimal for the relaxed problem.
+
+h
+
+Proof of Theorem 5. The first statement holds since
+
+"
+
+#
+
+Xc
+
+E½kÃ = E pi
+
+i=1
+
+ð136Þ
+
+Xc = E½pi
+i=1
+
+ð137Þ
+
+Xc = pi
+i=1
+
+ð138Þ
+
+Khosoussi et al.
+
+39
+
+For the second statement, see the Proof of Theorem 7. This statement is a special case of Theorem 7 when fuig and fvig are the columns of the reduced (weighted) incidence matrix.
+
+vPqeHirros¼oDiof n1ofÀTohpfeHi o.rfeHpmeHi n6gc.cie=L, 1ew.t epH1NhałovwepH2qH1fłoør Á
+
+Á Á ł pHc be the sorted all i 2 ½c, define
+qH2 ø . . . ø qHc . Thus
+
+maximizing (54) can be expressed as
+
+YY
+
+maximize
+A&½c, jAj = k
+
+i2A
+
+pHi
+
+j2½cnA
+
+qHj
+
+ð139Þ
+
+It is easy to see that this expression is maximized by pick-
+
+ing AH = fc À igik=À10, which corresponds to the set selected
+
+by the deterministic rounding procedure.
+
+h
+
+Proof of Theorem 7. We begin by applying the Cauchy– Binet formula:
+
+"
+
+!#
+
+Xm
+
+Ep det
+
+piuivTi
+
+i=1
+
+2
+
+3
+
+= Ep6664
+
+X det
+
+
+Q2
+
+½m n
+
+X
+k2Q
+
+pk
+
+uk
+
+vTk !7775
+
+" X
+
+=   Ep det
+
+Q2
+
+½m n
+
+!# X
+pk uk vTk
+k2Q
+
+ð140Þ ð141Þ ð142Þ
+
+Since jQj = n we have
+
+rank
+
+X
+
+pk
+
+uk
+
+vk
+
+!
+
+=
+
+&
+
+n g\n
+
+k2Q
+
+iff pk = 1 for all k 2 Q otherwise
+ð143Þ
+
+Hence, the determinant can be non-zero only when pk = 1 for all k 2 Q. Therefore,
+
+! X
+
+det
+
+pk ukvk
+
+k2Q
+
+=
+
+(
+
+det
+
+(
+
+P
+k2Q
+
+uk
+
+vTk )
+
+iff pk = 1 for all k 2 Q
+
+0
+
+otherwise
+
+ð144Þ ð145Þ
+
+However, from the independence assumption we know that,
+
+Y
+
+P½ ^ pk = 1 = pk
+
+k2Q
+
+k2Q
+
+ð146Þ
+
+Each individual expectation in (142) can be computed as follows:
+
+" Ep det
+
+!#
+
+!
+
+X
+
+X
+
+Y
+
+pkukvTk = det
+
+uk vTk
+
+pk
+
+k2Q
+
+k2Q
+
+k2Q
+
+!
+
+X
+
+= det
+
+pk uk vTk
+
+k2Q
+
+ð147Þ ð148Þ
+
+Plugging (148) back into (142) yields
+
+" Ep det
+
+!#
+
+Xm
+
+X
+
+piuivi
+i=1
+
+=
+
+det
+
+
+
+½m
+
+Q2 n
+
+! X
+pkuk vk
+k2Q
+
+ð149Þ
+
+oNfodteetth(aPt (mi1=419)piiusivnTio)th. iTnhgisbucot nthceluCdeasucthhey–pBroinoef.t
+
+expansion h
+
+Proof of Lemma 4. See the proof of Lemma 3.
+
+h
+

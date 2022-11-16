@@ -1,0 +1,2161 @@
+Simpliﬁed decision making in the belief space using belief sparsiﬁcation
+Khen Elimelech1 and Vadim Indelman2
+
+arXiv:1909.00885v5 [cs.AI] 20 Jun 2022
+
+Abstract In this work, we introduce a new and efﬁcient solution approach for the problem of decision making under uncertainty, which can be formulated as decision making in a belief space, over a possibly high-dimensional state space. Typically, to solve a decision problem, one should identify the optimal action from a set of candidates, according to some objective. We claim that one can often generate and solve an analogous yet simpliﬁed decision problem, which can be solved more efﬁciently. A wise simpliﬁcation method can lead to the same action selection, or one for which the maximal loss in optimality can be guaranteed. Furthermore, such simpliﬁcation is separated from the state inference and does not compromise its accuracy, as the selected action would ﬁnally be applied on the original state. First, we present the concept for general decision problems and provide a theoretical framework for a coherent formulation of the approach. We then practically apply these ideas to decision problems in the belief space, which can be simpliﬁed by considering a sparse approximation of their initial belief. The scalable belief sparsiﬁcation algorithm we provide is able to yield solutions which are guaranteed to be consistent with the original problem. We demonstrate the beneﬁts of the approach in the solution of a realistic active-SLAM problem and manage to signiﬁcantly reduce computation time, with no loss in the quality of solution. This work is both fundamental and practical, and holds numerous possible extensions.
+Keywords Decision making under uncertainty, belief space planning, POMDP, sparse systems, sparsiﬁcation, active SLAM
+
+1 Introduction
+1.1 Background
+In this era, intelligent autonomous agents and robots can be found all around us. They are designed for various functions, such as operating in remote domains, e.g., underwater and space; imitating humans and interacting with them; performing repetitive tasks; and ensuring safety of operations. They might be physically noticeable, e.g., personal-use drones, industrial robotic arms, and military vehicles; or less so, with the popularization of internet of things (IoT), smart homes, and virtual assistants. Still, these agents share the same fundamental goal – to autonomously plan and execute their actions. Yet, the increasing demand for these “smart” systems presents new challenges: integration of robotic agents into everyday life requires them to operate in real time, using inexpensive hardware. In addition, when planning their actions, these agents should account for real-world uncertainty in order to achieve reliable and robust performance. There are multiple possible sources for such uncertainty, including dynamic environments, in which unpredictable events might occur; noisy or limited observations, such as an imprecise GPS signal; and inaccurate delivery of actions.
+Also, problems, such as long-term autonomous navigation, and sensor placement over large areas, often involve optimization of numerous variables. These settings require reasoning over high-dimensional probabilistic states, known as “beliefs”. Appropriately, the corresponding planning problem is known as Belief Space Planning (BSP). The objective in such a problem is to select “safe” actions, which account for the uncertainty of the agent’s belief. Other relevant
+
+instantiations include active Simultaneous Localization and Mapping (SLAM), active sensing, robotic manipulation, and even cognitive tasks, such as dialogue management. The BSP problem is often modeled as a Partially Observable Markov Decision Process (POMDP), according to which we shall propagate the belief, and evaluate the development of uncertainty, considering multiple courses of action (Kaelbling et al. 1998). Further, proper uncertainty measures, such as differential entropy, are expensive to calculate for highdimensional and continuous beliefs. Overall, the computational complexity of the problem can turn exceptionally high, thus making it challenging for online systems, or when having a limited processing power.
+1.2 Objectives and approach overview
+The previous discussion leads us to our main goal – allowing computationally efﬁcient decision making. Note that in this study, we differentiate between planning and decision making. Planning is a broad concept, which takes into consideration many aspects, such as goal setting and balancing, generation of candidate actions, accounting for different planning horizons and future developments,
+1Robotics and Autonomous Systems Program, Technion — Israel Institute of Technology. 2Department of Aerospace Engineering, Technion — Israel Institute of Technology
+Corresponding author: Khen Elimelech, Technion, Haifa 3200003, Israel. Email: khen@technion.ac.il
+
+2
+
+coordination of agents, and so on. After reﬁning these aspects, we eventually result in a decision problem: considering an initial state, and a given set of candidate actions (or action sequences), we use an objective function to measure the scalar values attained by applying each action on the initial state; to solve the problem, we shall identify the optimal candidate action, which generates the highest objective value. With this rudimentary viewpoint, we dismiss problem-speciﬁc attributes, which allows our formulation to address a wider range of problems. Nonetheless, our work heavily focuses on contributing to decision making in the belief space. In these decision problems, the initial state is a belief over a (possibly) highdimensional state, and the objective function is a belief-based information-theoretic value, measured from the propagated (updated) belief, after applying a candidate action.
+A traditional solution to the decision problem requires calculation of the objective function for each candidate action. We would like to reduce the cost of the solution by sparing this exhaustive calculation and comparison. Instead, we suggest to identify and solve a simpliﬁed decision problem, which leads to the same action selection, or one for which the loss in quality of solution can be bounded. A problem may be simpliﬁed by adapting each of its components – initial state, objective function, and candidate actions. To allow such analysis, we ﬁrst provide a general theoretical framework, which does not depend on any problem-speciﬁc attributes; the framework allows us to formally quantify the effect of the simpliﬁcation on the action selection, and form optimality guarantees for it.
+We then show how these ideas can be practically applied to high-dimensional BSP problems. In this case, the problem is simpliﬁed by considering a sparse approximation of the initial belief, which can be efﬁciently propagated, in order to calculate the candidates’ objective values. The resulting simpliﬁed problem can be solved in any desired manner, making our approach complementary to other solvers. Furthermore, while several works already utilize belief sparsiﬁcation to allow long-term operation and tractable state inference, the novelty in our approach is the exploitation of sparsiﬁcation exclusively and dedicatedly for efﬁcient decision making. After solving the decision problem, the selected action is then applied on the original belief; by such, we do not compromise the accuracy of the estimated state.
+For clarity, we list down the contributions of this work, in the order they are presented in the manuscript:
+1. A theoretical framework supporting the concept of decision problem simpliﬁcation;
+2. Formulation of decision making in the belief space, and application of the concept to it;
+3. A scalable belief sparsiﬁcation algorithm; 4. Derivation of quality-of-solution guarantees; 5. Experimental demonstration in a highly realistic
+active-SLAM scenario, where a signiﬁcant improvement in run-time is achieved.
+Please note that this paper extends our previous publications (Elimelech and Indelman 2017a,b,c). Besides the expanded experimental evaluation, the belief sparsiﬁcation algorithm, which was previously introduced, is now reformed to a more stable and efﬁcient version. Also, the theoretical
+
+formulation includes several revisions and corrections to previously introduced deﬁnitions; the conclusive versions are those presented here. Also, to allow ﬂuid reading, proofs for all theorems, lemmas, and corollaries are given in the appendix.
+1.3 Related work
+Several works explore similar ideas to the ones presented here. In this section we do our best to provide an extensive review of such works, in comparison to ours.
+As mentioned, numerous methods consider sparsiﬁcation for the probabilistic state inference problem, in order to limit the belief size, and improve its tractability for long-term operation. Although being a well-researched concept, these methods do not examine sparsiﬁcation in the context of planning problems (inﬂuence over action selection, computational beneﬁts, etc.). Thrun et al. (2004), for example, showed that in a SLAM scenario, when using the information ﬁlter, forcing a certain sparsity pattern on the belief’s information matrix can lead to improved efﬁciency in belief update. However, they emphasized that the approximation quality was not guaranteed and that certain scenarios could lead to signiﬁcant divergence.
+Also, since Dellaert and Kaess (2006) demonstrated the equivalence between sparse matrices and (factor) graphs for belief representation, graph-based solutions for SLAM problems (which is often a sparse problem) have become more popular. Accordingly, methods for graph sparsiﬁcation have also gained relevance. For example, Huang et al. (2012) introduced a graph sparsiﬁcation method, using node marginalization. The resulting graph is notably consistent, meaning, the sparsiﬁed representation is not more conﬁdent than the original one. Several other approaches suggest to sparsify the graph using the Chow-Liu tree approximation, and show that the KL-divergence from the original graph remains low (Carlevaris-Bianco et al. 2014; CarlevarisBianco and Eustice 2014; Kretzschmar and Stachniss 2012). Hsiung et al. (2018) reach similar conclusions for ﬁxedlag Markov blankets. Notably, our sparsiﬁcation method, which is presented both in matrix and graph forms, preserves the dimensionality of the belief, and only modiﬁes the correlations between the variables. It is also guaranteed to exactly preserve the entropy of the belief.
+The approach described by Mu et al. (2017) separated the sparsiﬁcation into two stages: problem-speciﬁc removal of nodes, and problem-agnostic removal of correlations. The authors then demonstrated the superiority of their scheme over agnostic graph optimization, in terms of collision percentage. This two-stage solution reminds the logic in our sparsiﬁcation method: ﬁrst, identifying variables with minimal contribution to the decision problem, and then sparsiﬁcation of corresponding elements. Of course, we use such sparsiﬁcation for planning and not graph optimization.
+Exploiting sparsity to improve efﬁciency can also be done in other manners. Fundamental works (e.g., Davis et al. 2004), alongside newer ones (e.g. Frey et al. 2017; Agarwal and Olson 2012), provide heuristics for variable elimination order or variable pruning order, in order to minimize ﬁllin during factorization of the information matrix (which is utilized during belief propagation).
+
+Elimelech and Indelman
+
+3
+
+In the context of planning under uncertainty and POMDP, the research community has been extensively investigating solution methods to provide better scalability for real-world problems. Finding optimal solutions (policies) according to the POMDP formulation is often done by utilizing dynamic programming algorithms, such as, value and policy iteration (e.g., Porta et al. 2006; Pineau et al. 2006). Such methods are extremely computationally demanding, especially when considering high-dimensional state space (i.e., search spaces). These methods are thus generally not suitable for “online” planning problems for autonomous agents, in which we want to infer a speciﬁc sequence of actions to be executed immediately.
+Instead, when considering “online” scenarios, we typically perform a forward search from the current belief, and often forced to rely on approximated solutions. Standard online POMDP solvers (e.g., Silver and Veness 2010; Ye et al. 2017) often perform search in the state-space, and not the belief space, as we care to do here. Works which do consider planning in the belief space, typically focus on methods for alleviating the search. For example, some solution methods perform direct (localized) trajectory optimization (e.g. Indelman et al. 2015; Van Den Berg et al. 2012). Otherwise, while building on established motions planners (e.g., Karaman and Frazzoli 2011; Kavraki et al. 1996), works such as the Belief Roadmap (by Prentice and Roy 2009), FIRM (by Agha-Mohammadi et al. 2014), SLAP (by Agha-mohammadi et al. 2018), and others (e.g., by Patil et al. 2014) rely on sub-sampling a ﬁnite graph in the belief space, in which the solution can be searched. However, such methods are severely limited, by only allowing propagation of the belief over a single (most-recent) pose through the graph; i.e., they perform low-dimensional pose ﬁltering, rather than high-dimensional belief smoothing, as we do. This forced marginalization of state variables surely compromises the accuracy of the estimation, and limits the applicability to (problems such as) active-SLAM, in which we often wish to examine the information (uncertainty) of the entire posterior state, including the map and/or executed trajectory (Stachniss et al. 2004; Kim and Eustice 2014).
+Nonetheless, we do not focus on generation (or sampling) of candidates, but, instead, on efﬁcient comparison of their objective values, by lowering the cost of belief updates. Hence, our approach is complementary to the aforementioned graph-based methods, which focus on generating feasible candidates. We demonstrated this compatibility in our experimental evaluation, where we used a graph-based motion planner (from the most recent pose) to simply generate a set of candidate actions; we then efﬁciently selected the optimal candidate by propagating the sparsiﬁed (highdimensional) belief, and evaluating its posterior uncertainty. In that regard, we may mention additional works which similarly address the issue of high-dimensional belief propagation, in the context of active-SLAM (e.g., Chaves and Eustice 2016; Kopitkov and Indelman 2017).
+Also, closely related to our approach, several other works examine approximation of the state or the objective function in order to reduce the planning complexity. A recent approach (Bopardikar et al. 2016) suggested using a bound over the maximal eigenvalue of the covariance matrix as a cost function for planning, in an autonomous
+
+navigation scenario. Beneﬁts of using this cost function include easy computation, holding an optimal substructure property (incremental search) and the ability to account to misdetection of measurements. Yet, the actual quality of results in terms of ﬁnal uncertainty, when measured in conventional methods, is unclear. Their usage of bounds in attempt to improve planning efﬁciency reminds aspects of our work; however, we use bounds to quantify the quality of solution. As they mention in their discussion, an unanswered question is the difference in quality of solution between planning using the exact maximal eigenvalue, and planning using its bound. Our theoretical framework might be able to provide answer to this question.
+Boyen and Koller (1998) suggested maintaining an approximation of the belief for efﬁcient state inference. This approximation is done by dividing state variables into a set number of classes, and then using a product of marginals, while treating each class of variables as a single “metavariable”. A k-class belief simpliﬁcation cuts the original exponential inference complexity by a factor of k. The study showed that in rapidly-mixing POMDPs the expectation of the error could be bounded. This simpliﬁcation method was later examined under a restrictive planning scenario (McAllester and Singh 1999). The planning was performed using a planning-tree search, in which a constant amount of possible observations was sampled for each tree level, and again assuming a rapidlymixing POMDP. There, the error induced by planning in the approximated belief space can be bounded as well. This method shares similar objectives with our work, but examines a very speciﬁc scenario, which limits its generality.
+In the approach described by Roy et al. (2005), the authors attempted to ﬁnd approximate POMDP solutions by utilizing belief compression, which was done with a PCAbased algorithm. This key idea is similar to ours, yet, in that work, the objective value calculation (i.e., decision making) still relied on the original decompressed belief, instead of the simpliﬁed one. Thus, no apparent computational improvement was achieved in planning complexity. The paper also did not make a comparison of this nature, and only presented analysis on the quality of compression.
+The work presented by Indelman (2015, 2016) contained the ﬁrst explicit attempt to use belief sparsiﬁcation to speciﬁcally achieve efﬁcient planning. The papers showed that using a diagonal covariance approximation, a similar action selection could usually be maintained, while signiﬁcantly reducing the complexity of the objective calculation. This claim, however, is most often not guaranteed. Optimal action selection was only proved under severely simplifying assumptions – when candidate actions and observations only update a single state variable, with a rank-1 update of the information. This attempt inspired our extensive research and in-depth, formal analysis.
+Finally, it is worth mentioning that the idea of examining only the order of candidate actions, instead of their cardinal objective values, sometimes appears in the context of economics under the term ordinal utility (e.g. Manski 1988); this term, however, is not prominent in the context of artiﬁcial intelligence. We examine a similar idea in our theoretical framework, to follow.
+
+4
+
+2 Simpliﬁed decision making
+
+To begin with, let us consider a decision problem P, which 10 we formally deﬁne in Deﬁnition 1.
+
+Deﬁnition 1. A decision problem P is a 3-tuple (ξ, A, V ),
+
+8
+
+where ξ is the initial state, from which we examine a
+
+Value
+
+set of candidate actions A (ﬁnite or inﬁnite), using an
+
+6
+
+objective function V : {ξ} × A → R. Solving the problem
+
+means selecting the optimal action a∗, such that
+
+4
+
+a∗ = argmax V (ξ, a).
+a∈A
+
+(1)
+2
+
+Simplification Loss
+}
+
+0
+According to our suggested solution approach, we wish
+
+to generate problem Ps
+
+a=.nd(ξsso,lAves,aVssi)m, pwlhiﬁicehd
+
+yet analogous decision results in the same (or
+
+similar) action selection, but for which the solution is more (a)
+
+computationally efﬁcient. This can be achieved by altering
+
+Action Simplification Offset
+
+or approximating any of the problem components – initial state, candidate actions, or objective function – in order to 10
+
+alleviate the calculation of the candidates’ objective values.
+
+Nonetheless, approximating each of these components
+
+8
+
+represents a different simpliﬁcation approach. For example,
+
+there is a logical difference between simplifying the initial
+
+6
+
+state (i.e., examining different states under the same
+
+Value
+
+}
+
+objective function), and simplifying the objective function
+4
+(i.e., examining the same state under different objectives); in
+
+the ﬁrst case, we would like to maintain a certain relation
+
+between states, and in the second one, a relation between
+
+2
+
+functions.
+
+}}
+
+Next, we will introduce additional ideas to help formalize
+
+0
+
+our goal, and see how these can guide us towards designing
+
+1 2 3 4 5 6 7 8 9 10
+
+effective simpliﬁcation methods, which are guaranteed to
+
+Action
+
+preserve the quality of solution.
+
+(b)
+
+2.1 Analyzing simpliﬁcations
+2.1.1 Simpliﬁcation loss Examining a simpliﬁed decision problem may lead to loss in the quality of solution, when the selected action is not the real optimal action. We can express this loss with the following simpliﬁcation quality measure:
+
+Deﬁnition 2.
+
+sPios n=.
+
+problem (ξs, As,
+
+PTh=e.
+
+simpliﬁcation (ξ, A, V ) and
+
+loss between its simpliﬁed
+
+a deciversion
+
+Vs), due to sub-optimal action selection, is
+
+loss(P, Ps) =. V (ξ, a∗) − V (ξ, a∗s),
+
+where a∗ = argmax V (ξ, a), a∗s = argmax Vs(ξs, as).
+
+a∈A
+
+as ∈As
+
+(2)
+
+To put in words, this loss is the difference between
+the maximal objective value, attained by applying the optimal candidate action a∗ on ξ, and the value attained by applying a∗s (the action returned from the solution of the simpliﬁed solution) on ξ. This idea is illustrated in Fig. 1a. We implicitly assume that the original objective function V can accept actions from the simpliﬁed set of candidates As. When the solutions to the problems agree loss(P, Ps) = 0.
+Most often it is indeed possible to settle for simpliﬁed
+decision problem formulation (which can lead to a sub-
+optimal action), in order to reduce the complexity of action
+
+Figure 1. Ps is a simpliﬁed version of a decision problem P; the graphs show the objective values of each problem’s candidate actions. (a) a∗s is the optimal action according to the simpliﬁed problem, and a∗ is the real optimal action; the
+difference between the (real) objective values of these two
+actions is the loss induced by the simpliﬁcation. (b) The offset
+measures the maximal difference between respective objective
+values from the two problems, and does not require to explicitly identify a∗/a∗s .
+
+selection; though, it is important to quantify and bound the potential loss, before applying the selected action, in order to guarantee that this solution can be relied on.
+2.1.2 Simpliﬁcation offset To asses the simpliﬁcation loss, we suggest to identify the simpliﬁcation offset, which acts as an intuitive “distance” measure in the space of decision problems:
+
+Dasime∈ﬁpnAliiﬁ,tiebodentvwe3er.seinoTnahPedescs=ii.smi(opξnlsiﬁ,pcArao,tbiVloesnm) iosPffs=.et
+
+of a (ξ, A, V
+
+candidate ), and its
+
+δ(P, Ps, a) =. |V (ξ, a) − Vs(ξs, a)|.
+
+(3)
+
+Overall, the simpliﬁcation offset between P and Ps is
+
+∆(P, Ps) =. max {δ(P, Ps, a)} .
+
+(4)
+
+a∈A
+
+Elimelech and Indelman
+
+5
+
+Unlike the loss, the offset (which is illustrated in Fig. 1b) measures the maximal difference between respective objective values from the two problems, and does not require to explicitly identify the optimal actions. Further, for each candidate a ∈ A, the offset represents an interval for the real value V (ξ, a), around the respective approximated value Vs(ξs, a), in which it must lie, i.e.:
+Vs(ξs, a) − δ(a) ≤ V (ξ, a) ≤ Vs(ξs, a) + δ(a) (5)
+Notably, the offset represents only the size of this interval, and not its location on the value axis (around Vs(ξs, a)). This means that the offset, in contrast to the loss, is a property of the simpliﬁcation method, and does not depend on the solution of P nor Ps. It can thus potentially be examined without explicitly solving either of the problems, nor calculating V nor Vs, as we shall see.
+Note that when deﬁning the offset, we implicitly considered that the two problems examine the same set of candidate actions; this will be valid from now on, unless stated otherwise. Also, for brevity, we will no longer write the initial state as input to V /Vs, nor V, Vs as input to δ/∆, whenever the context is clear. Next, we will explain how we can utilize the offset to infer loss guarantees.
+2.2 Optimality guarantees
+2.2.1 Bounding the offset Obviously, knowing the offset exactly for every action would be equivalent to having access to the original solution. We would thus usually rely on a bound of the offset to infer loss guarantees. As mentioned, the offset measures the difference between respective objective values from the original and simpliﬁed problems, and is independent of their solutions. Thus, we can evaluate and attempt to bound the offset before solving the problem; by utilizing the general structure of problems in our domain, and knowing how they are affected by the nominative simpliﬁcation method, we can try to infer a symbolic formula for the offset, and draw conclusions from it. This type of analysis often allows us to draw general conclusions regarding the simpliﬁcation method, rather than a speciﬁc problem. For example, in Section 3.2, we discuss a novel belief simpliﬁcation method, used to reduce the cost of planning in the “belief space”. By symbolically analyzing the offset (for any decision problem in this domain), we could identify the conditions under which its value is zero, and the simpliﬁcation is guaranteed to induce no loss. This idea is later demonstrated in Section 3.3.1. Still, we note that providing completely general guarantees, which are valid for all the decision problems in the domain, is not always possible from pure symbolic analysis. Sometimes, to draw decisive conclusions, we must assign the properties of the speciﬁc decision problem we wish to solve.
+If we failed to reach valuable conclusions from such “presolution” symbolic analysis of the offset, we can try to bound it “post-solution”, by utilizing the calculated (simpliﬁed) values, and (any) known bounds, or limits, for the real objective values; these limits should be selected based on domain knowledge of the speciﬁc problem. Then, the following can be easily derived from the deﬁnition of the
+
+simpliﬁcation loss:
+
+δ(a) ≤ max Vs(ξs, a) − LB {V (ξ, a)} ,
+
+U B {V (ξ, a)} − Vs(ξs, a)
+
+(6)
+
+where LB, UB stand for lower and upper bounds, respectively. We demonstrate how to practically utilize this idea in Section 3.3.2.
+2.2.2 Bounding the loss As discussed, our goal is to guarantee that relying on a certain simpliﬁcation would not induce more than the acceptable loss. As with the offset, bounding the loss can be done on two occasions: (i) presolution analysis – this type of analysis occurs before solving the simpliﬁed problem (based on the availability of “symbolic” offset bounds); and (ii) post-solution analysis – which occurs after solving the simpliﬁed problem (but before applying the selected action). Surely, we prefer to know if the simpliﬁed solution would be worthwhile before investing in it; for example, we may consider the case where action execution is costly (as measured with the objective function), and beyond a certain loss, improving the decision making efﬁciency is not worth the execution of a sub-optimal action. Nonetheless, post-solution guarantees are typically tighter, as we can also rely on the calculated values. The notion of offset allow us to seamlessly derive both types of guarantees, and easily improve them when reﬁning the solution, or given access to new information.
+From the properties of the absolute value, it is also easy to infer that the offset is a valid metric (a distance measure) between decision problems. Indeed, Lemma 1 intuitively indicates that when the offset between a problem and its simpliﬁcation is small, then the induced loss is also small, and the action selection stays “similar”.
+Lemma 1. For any two decision problems P and Ps,
+
+0 ≤ loss(P, Ps) ≤ 2 · ∆(P, Ps).
+
+(7)
+
+This conclusion is potentially reachable in pre-solution analysis, as it does not rely on the simpliﬁed solution, i.e., the calculated objective values; when these become available, in post-solution analysis, this bound can be reﬁned, as indicated in Lemma 2.
+Lemma 2. For any two decision problems P and Ps,
+
+loss(P, Ps) ≤
+
+max
+
+0,
+
+2
+
+·
+
+∆(P ,
+
+Ps)
+
++
+
+max
+a=a∗s
+
+Vs(a)
+
+− Vs(a∗s) . (8)
+
+For an extended discussion regarding derivation of loss guarantees, including a proof of Lemma 2, and more intricate loss bounding techniques, please refer to Elimelech (2021). Speciﬁcally, when we do not have access to a symbolic formula for the offset, and instead rely on the “post-solution offset bound” (6), the expression in (8) simpliﬁes to:
+
+loss(P ,
+
+Ps)
+
+≤
+
+max
+a=a∗s
+
+{U B
+
+{V
+
+(a)}}
+
+−
+
+LB
+
+{V
+
+(a∗s )}
+
+.
+
+(9)
+
+Notably, such post-solution analysis allows us to understand not only what is the maximal possible loss, but also which candidates are likely to cause it.
+
+6
+
+2.3 Reducing simpliﬁcation bias
+
+Action Consistent Decision Problems
+
+Previously, we suggested the simpliﬁcation offset as 10
+
+a “distance measure” between decision problems, and
+
+recognized that it(s bound) can be used to bound the
+
+8
+
+simpliﬁcation loss. However, this distance measure may be
+
+deceiving, as the problems may appear to be separated by
+
+a large offset, even when the simpliﬁcation induces a small
+
+6
+
+Value
+
+loss. Speciﬁcally, this can be the case when the simpliﬁcation
+
+causes a large “bias” in the simpliﬁed objective values. In the
+
+4
+
+following section we introduce another concept, to help us
+
+handle such scenarios.
+
+2
+
+2.3.1 Action consistency We point out a key observation: to solve the decision problem, we only need to sort (or rank) the candidate actions in terms of their objective function value; changing the values themselves, without changing the order of actions, does not change the action selection. Hence, when two problems maintain the same order of candidate actions, their solution is equivalent. In this case, we can simply say that the two problems are action consistent, as demonstrated in Fig. 2a.
+
+aDnedﬁnPit2io=.n
+
+4. (ξ2,
+
+Two A, V2
+
+decision problems, P1 =. (ξ1, A, V1) ), are action consistent, and marked
+
+P1 P2, if the following applies ∀ai, aj ∈ A:
+
+0 1
+(a)
+10 8 6
+
+Value
+
+2 3 4 5 6 7 8 9 10 Action
+Reduced Bias Simplification Offset
+}}
+
+V1(ξ1, ai) < V1(ξ1, aj) ⇐⇒ V2(ξ2, ai) < V2(ξ2, aj).
+
+4
+
+(10)
+
+If also V1 ≡ V2, we can simply say that ξ1, ξ2 are action
+
+2
+
+consistent, and mark ξ1 ξ2.
+
+This relation holds several interesting properties.
+Lemma 3. Action consistency ( ) is an equivalence relation; i.e., any three decision problems P1, P2, P3, satisfy the following properties:
+1. Reﬂexivity: P1 P1. 2. Symmetry: P1 P2 ⇐⇒ P2 P1. 3. Transitivity: P1 P2 ∧ P2 P3 =⇒ P1 P3.
+Lemma 3 implies that the entire space of decision problems is divided into separate equivalence-classes of action consistent problems. Lemma 4 adds that we can transfer between action consistent problems using monotonically increasing functions. We remind again that all proofs are given in Appendix B.
+Lemma 4. For any two decision problems P1 and P2,
+P1 P2 ⇐⇒ the mapping f : V1(ξ1, a) → V2(ξ2, a) is monotonically increasing. (11)
+Meaning, if the (scalar) mapping of respective objective values between the two problems agrees with a monotonically increasing function (e.g., a constant shift, a linear transform, or a logarithmic function), then the problems are action consistent. If this mapping is not monotonically increasing, then the problems are not action consistent.
+2.3.2 Unbiased simpliﬁcation offset The notion of action consistency can help us to achieve better guarantees when utilizing our previously developed analysis approach. We now understand that when deriving loss bounds, instead of
+
+0 1 2 3 4 5 6 7 8 9 10
+Action
+(b)
+Figure 2. (a) Each graph represents the objective values of the candidate actions of a certain decision problem; although the values are different, all the graphs maintain the same trend among the actions, and therefore the problems are action consistent. (b) The simpliﬁcation offset ∆ between P and Ps is the maximal difference between the values of respective actions. The offset can be reduced by utilizing a monotonically increasing function f (here we used a constant-shift), which leads to an less biased yet action consistent problem Psf .
+
+examining a simpliﬁed problem Ps, we can, equivalently,
+
+examine any other problem Psf that is action consistent with
+
+iPt.sfF=u. rt(hξesr,,
+
+such a problem will necessarily be A, f ◦ Vs), where f is monotonically
+
+of the form increasing.
+
+Accordingly, instead of examining the simpliﬁcation
+
+offset, as considered thus far, we can examine the unbiased
+
+simpliﬁcation offset:
+
+Ddeecﬁisniiotniopnro5b. leTmhePun=.bi(aξs,eAd ,sVim)p, laiﬁncdaittisonsiomffpsleiﬁt ebdetvweeresniona Ps =. (ξs, A, Vs) is
+∆∗(P, Ps) =. min ∆(P, Psf ) | f : R → R is monotonically increasing ∧ Psf =. (ξs, A, f ◦ Vs) .
+(12)
+
+The unbiased offset is the minimal offset between P and any problem action consistent with Ps. A demonstrative
+
+Elimelech and Indelman
+
+7
+
+example appears in Fig. 2b. Speciﬁcally, P Ps, if and only if the unbiased offset is zero:
+
+Lemma 5. For any two decision problems P and Ps,
+
+P Ps ⇐⇒ ∆∗(P, Ps) = 0.
+
+(13)
+
+Thankfully, our previous conclusions still hold, and we can use the unbiased simpliﬁcation offset to bound the loss:
+
+Lemma 6. For any two decision problems P and Ps,
+
+0 ≤ loss(P, Ps) ≤ 2 · ∆∗(P, Ps).
+
+(14)
+
+Since ∆∗(P, Ps) ≤ ∆(P, Psf ), for any monotonically increasing f . We can symbolically develop ∆(P, Psf ), for any such f that is convenient, in order to bound the loss; such a function should help “counter” the effect of the simpliﬁcation on the objective values. We may also recognize that the unbiased offset satisﬁes the triangle inequality (like the standard offset):
+
+Lemma 7. For any three decision problems P1, P2, and P3, the unbiased simpliﬁcation offset satisﬁes the triangle inequality, i.e.,
+
+∆∗(P1, P2) + ∆∗(P2, P3) ≥ ∆∗(P1, P3). (15)
+
+This property can potentially help in bounding the loss, when applying multiple simpliﬁcations. However, unlike the standard offset, the unbiased offset is scaled according to the original objective values (like the loss), and is asymmetric in its input arguments. It is, therefore, not considered a metric*.
+We may also note that the notions of action consistency and simpliﬁcation offset are related to the concept of “rank correlation” – a scalar statistic which measures the correlation between two ranking vectors (see Kendall 1948). Yet, such ordinal vectors are oblivious to the cardinal objective values, and, therefore, cannot be used to bound the simpliﬁcation loss. The rank correlation coefﬁcient mostly serves for statistical analysis, as its calculation requires perfect knowledge on the ranking vectors. Since the rank variables are not independent of each other, a change or addition of a single vector entry may subsequently lead to change in all other entries, and require complete recalculation of the correlation coefﬁcient. On the other hand, the concepts we introduced rely on a “local relation” between the problems: to check for action consistency, we only examine pairs of actions at a time; and to evaluate the offset – only pairs of respective objective values. Addition of candidates, for example, does not affect these relations between the existing candidates. As we explain next, this locality can be utilized to derive offset and loss bounds.
+
+3 Decision making in the belief space
+In the previous section, we examined the concept of decision problem simpliﬁcation. We now wish to practically apply this idea to allow efﬁcient decision making under uncertainty, which we formulate as decision making in the belief space. In this domain, the initial state of the decision problem is actually a probability distribution (“belief”), and, as to be explained, the problem is simpliﬁed by considering a sparse approximation of it. We provide an appropriate sparsiﬁcation algorithm, and then show that the induced loss can be bounded. First of all, we deﬁne the problem.
+
+3.1 Problem deﬁnition
+
+3.1.1 Belief propagation We consider a sequential prob-
+
+abilistic process. At time-step k, an agent transitions from
+
+pose xk−1 to pose xk, using a control uk. It then receives an
+
+observation of the world agent’s state vector Xk
+
+z=.k ,(bxaT0s,e.d.
+
+on its . , xTk ,
+
+updated state. The LTk )T consists of
+
+the series of poses, and may also include external variables,
+
+which are introduced by the observations; for example, in
+
+a full-SLAM scenario, Lk can stand for the positions of
+
+maintained landmarks.
+
+Pose transition and observation are both probabilistic
+
+operations, which induce probabilistic constraints over the
+
+state variables, known as factors. Here, we assume the
+
+transition and observation models are described with the
+
+following dependencies:
+
+xk = gk(xk−1, uk) + wk, zk = hk(Xk) + vk,
+
+wk ∼ N (0, Wk), (16) vk ∼ N (0, Vk), (17)
+
+where Wk, Vk are the covariance matrices of the respective normally-distributed (Gaussian) zero-mean noise models wk, vk, and gk, hk are deterministic functions.
+At each time-step, the agent maintains the posterior distribution over its current state vector Xk, given the controls and observations taken until that time; this distribution, which is deﬁned by the product of these factors, is also known as its belief :
+
+k
+
+bk =. P(Xk | u1:k, z1:k) ∝ f ui f zi ,
+
+(18)
+
+i=1
+
+where u1:k =. {u1, . . . , uk} and z1:k =. {z1, . . . , zk}, and f ui , f zi are the factors matching the respective controls and
+
+observations. As widely considered, by utilizing local model
+
+linearization, we may conclude that given the previously-
+
+deﬁned models, the belief bk is also normally-distributed (for
+
+the full derivation see Elimelech (2021)). Hence, to describe
+
+it, we can use a covariance matrix Σk, or equivalently, its inverse, the (Fisher) information matrix Λk:
+
+bk = N (Xk∗, Σk) ≡ N Xk∗, Λ−k 1 .
+
+(19)
+
+The matrices are symmetric, and the order of their rows and columns matches the speciﬁc order of variables in the state.
+We may now reason about a posterior belief bk+1, after performing a control uk+1 and taking an observation zk+1:
+
+bk+1 =. P(Xk+1 | u1:k+1, z1:k+1) ∝ bk · P(xk+1 | xk, uk+1) · P(zk+1 | Xk+1). (20)
+
+This belief remains normally-distributed and can be described with the following information matrix:
+Λk+1 = Λ˘ k + GTk+1Wk−+11Gk+1 + HkT+1Vk−+11Hk+1, (21)
+where the matrices Gk+1 and Hk+1 are the Jacobians ∇gk+1|Xk+1 and ∇hk+1|Xk+1 , respectively, around some
+
+∗Still, the aforementioned properties, along with the obvious non-negativity, make the unbiased offset a quasi-metric (or asymmetric metric), which induces an appropriate topology on the space of decision problems, as explained by Ku¨nzi (2001).
+
+8
+
+initial estimate, and Λ˘ k is the augmented prior information matrix. Since controls and observations may introduce new variables to the state vector, its size at time-step k, often does not match its size at time-step k + 1. Hence, the prior information matrix Λk should be augmented to accommodate these new variables. We use the accent ˘ to indicate augmentation of the prior information matrix (with entries of zero) to match the posterior size. Adding new variables is possible at any index in the state, as long as we make sure the augmentation keeps the same variable order. If the prior state is of size n, and we add m new variables to the end of it, then
+
+Λ˘ k =.
+
+Λnk×n 0n×m 0m×n 0m×m
+
+.
+
+(22)
+
+and ﬁnal beliefs:
+
+V˜ (bk, u) =. E [H(bk) − H(bk+T )] ,
+
+(26)
+
+Z
+
+where u is a candidate control sequence, and Z is the set
+
+of observations taken while performing this sequence. We
+
+may also take the common assumption of achieving the most
+
+likely observations, around the current mean (“maximum
+
+likelihood” assumption, as examined by Platt et al. (2010)),
+
+which would allow us to drop the expectation from this
+
+expression. We will also drop the augmentation mark and
+
+time index from now on, for the sake of concise writing.
+
+Overall, from an initial belief b, and considering a given
+
+sseotlvoinf gcathnediddeacteisicoonnptrroolbsleemquPenc=.es(bU,
+
+, we U,V
+
+are interested in ), where V is the
+
+objective function:
+
+The expression in (21) can be written in a more compact form, by marking the collective Jacobian Jkδ+1, which encapsulates the new information regarding the control and
+the succeeding observation:
+
+Λk+1 = Λ˘ k + Jkδ+1T Jkδ+1, where Jkδ+1 =
+
+Wk−+211Gk+1 Vk−+121 Hk+1
+
+.
+
+(23)
+
+Each belief update can be described using a collective
+
+Jacobian of this form. Thanks to the additivity of the
+
+information, we can easily examine the information matrix
+
+ocof nthtreolpsouste=.riourk+be1l:kie+fTb;k+thTe
+
+after applying a sequence of T respective collective Jacobians
+
+of each control can simply be stacked to yield the collective
+
+Jacobian U of the entire sequence u:
+
+T
+
+Λk+T = Λ˘ k +
+
+Jkδ+tT Jkδ+t =. Λ˘ k + U T U ,
+
+t=1
+
+ Jkδ+1 
+
+where U =.  
+
+...
+
+. 
+
+(24)
+
+Jkδ+T
+
+3.1.2 Decision making At time-step k, the agent performs a planning session. According to its current (prior) belief bk, it wishes to select the control sequence which minimizes the expected uncertainty in the future (posterior) belief. To measure the uncertainty we use the differential entropy, which, for a normally-distributed belief b of state size n, with an information matrix Λ, is
+
+1
+
+(2πe)n
+
+1
+
+H(b) = · ln
+
+= − · (ln|Λ| − n · ln(2πe)) ,
+
+2
+
+|Λ|
+
+2
+
+(25)
+
+where | | represents the determinant operation. Although
+
+other uncertainty measures with a lower computational cost
+
+exist, e.g., the trace of the covariance matrix, the entropy
+
+bests those by taking inter-variable correlations into account;
+
+those can have a dramatic effect on the measured uncertainty,
+
+and are crucial for correct analysis. Thus, while utilizing the
+
+information update rule from (24), we deﬁne the following
+
+information-theoretic value or objective function, which
+
+measures the expected information gain between the current
+
+V (b, u) =. 1 · ln Λ˘ + U T U − ln|Λ| − m · ln(2πe) , 2 (27)
+Λ is the information matrix of the prior belief b, U is the collective Jacobian of u, and m is the number of variables added to the state when executing u (the difference between the number of columns in U and in Λ).
+For clariﬁcation, we described the process as sequential to conform to the common POMDP framework; we treat every planning session as a separate decision problem. Further, the “maximum likelihood” assumption is not essential, but is used to achieve a clear discussion, where each candidate control sequence can be described with a single collective Jacobian; for a generalized discussion, where this assumption is relaxed, and where we also allow examination of candidate policies, please see Elimelech (2021). Finally, we can use the information matrix to examine the future beliefs, even if the state inference process is not based on such information smoother. If the initial information matrix is not provided, it can be calculated by inverting the covariance matrix.
+
+3.1.3 The square root matrix An alternative way to represent the belief bk (and propagate it), is using the upper triangular square root matrix Rk of the information matrix Λk, given (e.g.) by calculating the Cholesky factorization:
+
+Λk = RkT Rk.
+
+(28)
+
+Like Λk, the order of rows and columns of Rk also matches the order of variables in the state. Prominent state-of-the-art SLAM algorithms, e.g., iSAM2 (Kaess et al. 2012), rely on this representation, as it allows the calculation of the posterior mean (state inference) to be performed incrementally, while exploiting inherent sparsity.
+Our belief simpliﬁcation method, as described in the following section, also relies on this representation. Unfortunately, in this form, the information update losses its convenient additivity property, and requires re-calculation (or update) of the factorization, in order to ﬁnd the posterior square root matrix Rk+T , such that
+
+RkT+T Rk+T = Λk+T = R˘kT R˘k + U T U ,
+
+(29)
+
+where U is deﬁned as in (24), and R˘k marks an appropriate
+
+augmentation of the prior root matrix:
+
+R˘k =. Rkn×n 0n×m .
+
+(30)
+
+Elimelech and Indelman
+
+9
+
+On the other hand, the determinant of the posterior information can be calculated in linear time – by multiplying of the diagonal elements of this triangular matrix. The objective function (27) can thus be re-written as
+
+Initial belief b
+
+Updates corrsponding to each candidate action (“collective Jacobians”)
+
+Identify uninvolved variables
+
+V (b, u) ≡
+
+1 ·
+2
+
+N
+
+n
+
+ln(Ri+i )2 − ln(Rii)2 − m · ln(2πe) , (31)
+
+i=1
+
+i=1
+
+Select a subset S of state variables to sparsify
+Find a sparse approximation bs of the initial belief using Algorithm 1
+
+where n is the prior state size, N is the posterior state size, R+ marks the posterior square root matrix, and the subscript ij marks the matrix element in the i-th row and j-th column. As explained, using this form, the signiﬁcant computational cost of calculating the objective value moves from the determinant calculation to the information update phase, though this can be performed incrementally.
+
+Pre-solution analysis
+Calculate the objective values for all candidates using bs
+Select the “optimal” candidate
+Post-solution analysis: derive loss bounds, to guarantee the quality of solution
+
+3.2 Belief sparsiﬁcation
+
+We now decision
+
+wish to problem
+
+wpreesheanvteajussitmfpolrimﬁcaaltiizoend:mPet=h.o(db,fUor,
+
+the V ).
+
+We choose keep the same objective function V , and set U
+
+of candidate actions, and focus on simplifying the initial
+
+belief b. As stated, candidate actions here are actually control
+
+sequences for the agent; we assume the collective Jacobians
+
+for the set of actions are available.
+
+As we saw, calculation of the objective function (as deﬁned in (27)) involves calculation of the determinant of the posterior information matrix, after performing an appropriate belief update for the candidate action. The cost of this calculation depends directly on the number of nonzero elements in the matrix, and is signiﬁcantly lower for sparse matrices. Thanks to the additivity of the information, sparsifying the prior information matrix Λ could potentially lead to a sparser posterior information matrix Λ + U T U , for every candidate action u with collective Jacobian U ; notably, such sparsiﬁcation of the prior is only calculated once, for any number of actions. We also note that in many problems, especially in navigation problems, the collective Jacobians are inherently sparse, and as the state grows, involve less variables in relation to its size. Hence, even after their addition to the sparsiﬁed prior information matrix, its sparsity shall be retained. Equivalently, we may seek to sparsify R, the square root of Λ, which is used in (31), in order to improve the efﬁciency of the factorization update process.
+
+Overall, assuming the initial belief of the decision problem is b = N (X∗, Λ−1), our simpliﬁed problem shall rely instead on bs = N (X∗, Λ−s 1) as the initial belief, where Λs is a sparse approximation of Λ. In the following section, we present a sparsiﬁcation algorithm† for the information matrix
+(or its square root matrix). Fig. 3 summarizes the paradigm
+of belief sparsiﬁcation for efﬁcient decision making in the
+belief space; clariﬁcation regarding its steps is to follow.
+
+Apply the selected action on the original belief b
+Figure 3. Belief sparsiﬁcation for efﬁcient decision making in the belief space. Essential steps are in dark blue; optional steps, in order to provide guarantees, are in light blue. Here, candidate actions represent control sequences for the agent.
+3.2.1 The algorithm Algorithm 1 summarizes our suggested method for belief sparsiﬁcation. The algorithm may receive as input, and return as output, a belief represented using either the information matrix, or its square root. This scalable algorithm depends on a pre-selected subset S of state variables, and wisely removes elements which correspond to these variables from the matrix. Approximations of different degrees can be generated using different variable selections S, as to be explained in Section 3.3.1. For a clear discussion, when S contains all the variables, we say this is a full sparsiﬁcation; using any other partial selection of variables is a partial sparsiﬁcation. Fig. 4 contains a visual demonstration of the algorithm steps. In the following section (Section 3.2.2), we provide an extended probabilistic analysis of the algorithm, and explain how it can also be applied to general (non-Gaussian) beliefs; a visual demonstration of such application, where we represent the belief using a generic factor graph, is given in Figure 5. An example of the the algorithm output is provided in Figure 6.
+Let us break down the algorithm steps: ﬁrst, we should check if the variables are ordered properly, i.e., such that the variables we wish to sparsify (variables in S) appear ﬁrst in the state. If not, we should reorder the variables accordingly. This requires appropriate modiﬁcation of the input matrix. If the algorithm input is the symmetric matrix Λ (line 2), we shall simply permute its rows and columns by calculating the product P T ΛP of the information matrix with an appropriate (column) permutation matrix P . After
+†Algorithm 1 is a revised version of the sparsiﬁcation algorithm that appeared in our previous publication (Elimelech and Indelman 2017c).
+
+10
+
+(a)
+
+(b)
+
+(c)
+
+(d)
+
+(e)
+
+(f)
+
+Figure are X
+
+=4. .
+
+The steps of [x1, l1, l2, x2,
+
+Algorithm 1 (from left-to-right), x3, l3]T (in that order), and the
+
+for sparsiﬁcation of subset of variables
+
+a Gaussian selected for
+
+belief (shown sparsiﬁcation
+
+in is
+
+Fig. S=
+
+5a); the {x1, l2,
+
+state variables x2} (in green).
+
+(a) The sparsity pattern of the symmetric information matrix of belief. (b) Reordering the variables, such that all the variables in S
+
+appear ﬁrst; this is done by simply permuting the rows and columns of the matrix. (c) Calculating the upper triangular square root matrix chol(Λp) of the permuted information matrix; each row corresponds to a state variable. (d) Removing off-diagonal elements
+
+from rows corresponding to variables in S. (e) After the sparsiﬁcation, we may permute the variables back to their original order
+
+dΛirse=c.tlyRinsT
+
+the Rs;
+
+square root matrix, without breaking its upper triangular shape. note that the process affects the values in the matrix, and may
+
+(f) Reforming the sparsiﬁed information matrix also introduce new non-zeros (marked in purple).
+
+Algorithm 1: Scalable belief sparsiﬁcation.
+
+Inputs: A belief b = N (X∗, Λ−1), such that Λ = RT R
+A subset S of state variables to sparsify
+
+Output:
+
+A sparsiﬁed belief Λs =. RsT Rs
+
+bs
+
+=.
+
+N
+
+(X ∗ ,
+
+Λ−s 1),
+
+such
+
+that
+
+// reorder the state variables such that the variables in S are
+first in the state vector 1 P ← an appropriate (column) permutation matrix 2 if the algorithm input is Λ then 3 Λp ← P T ΛP 4 Rp ← chol(Λp)
+
+5 else if the algorithm input is R then
+
+6 Rp ← modify R to convey appropriate variable
+
+reordering (see remark in the main text)
+
+7 Rsp ← zero off-diagonal elements from Rp in rows
+
+matching variables in S
+
+// sparsify Rp
+
+8 Rs ← P RspP T
+
+// return to the
+
+original variable order
+
+9 if the algorithm output is Λ then
+
+10
+
+Λs ← RsT Rs
+
+// reform the
+
+information matrix
+
+this permutation, we can derive Rp, the square root matrix of the permuted information matrix, using the Cholesky decomposition (line 4). If the algorithm input is the matrix R (line 5), the task of variable reordering is not trivial, as trying to modify R by permuting its rows and columns would break its triangular shape. Instead, this task (typically) requires refactorization of Λ under the new variable order.
+Remark In our follow-up work (Elimelech and Indelman 2021), we provide an efﬁcient modiﬁcation algorithm for R, which is intended for the task of variable reordering, and can spare the matrix re-factorization; we can use this algorithm to efﬁciently derive Rp (line 6).
+
+If no reordering is required, and the algorithm input is Λ, we may directly calculate the Cholesky decomposition (line 4); if no reordering is required, and the input is R, we may skip directly to line 7. Speciﬁcally, when all of S is already at the beginning of the state, no reordering is needed. This situation particularly occurs when sparsifying all the variables (i.e., full sparsiﬁcation). Next, in line 7, we zero off-diagonal elements in the permuted square root matrix Rp, in rows corresponding to variables in S, to yield the sparsiﬁed square root matrix Rsp.
+Since the prior belief should be updated according to the predicted hypotheses, the variable order in the sparsiﬁed information matrix (or its square root) must match the variable order in the collective Jacobians. Thus, we should reorder the variables back to their original order (line 8). Though, we notice that after the sparsiﬁcation this permutation can be performed on the square root matrix directly, without resorting to the information matrix, and without breaking its triangular shape, by calculating P RspP T (note the reverse multiplication order). This claim is formalized in Corollary 1 (and proved in Appendix B).
+Corollary 1. After sparsiﬁcation of the square root matrix (line 7 of Algorithm 1), permutation of the variables back to their original order can be performed on the square root matrix directly, without breaking its triangular shape.
+Finally, we may return the sparsiﬁed belief, represented either with Rs or Λs. In the latter case, this requires to (easily) reconstruct the sparsiﬁed information matrix from its sparsiﬁed root (line 10). After the sparsiﬁcation, the value of the non-zero (NZ) entries in the sparsiﬁed information matrix may be different than the corresponding entries in the original matrix (including the diagonal), and new NZs may be added in compensation for the removed entries (factors). Also, note that the permutation of variables back to their original order can potentially be skipped, by equivalently permuting the columns of all the candidate collective Jacobians, to match the altered order.
+The derivation of Rp (in line 4 or line 6), when conducted, is the costliest step of the algorithm, which deﬁnes its maximal computational complexity; we may recall that the complexity of the Cholesky decomposition is O(n3), at worst, where n is the state size (Ha¨mmerlin and Hoffmann 2012). In comparison, the computational cost of
+
+Elimelech and Indelman
+
+11
+
+the remaining steps, i.e., matrix permutation (lines 3 and 8), removal of matrix elements (line 7), and reconstruction of the information matrix (line 10), is usually minor. Still, it should be noted that depending on the conﬁguration, many of the steps are often not necessary. For example, as mentioned, when the input matrix is already in the desired order, the permutations can be skipped; this is speciﬁcally correct in full sparsiﬁcation. In that case, if given the square root matrix as input, the algorithm holds an almost negligible complexity – we only need to extract the matrix’ diagonal. Also, in full sparsiﬁcation, the sparsiﬁed information matrix, if required, can be reconstructed from its root in linear complexity, as both Rs and Λs are diagonal.
+Nonetheless, we remind that the approach is meant to overall reduce the decision making time, as the time spent on performing the sparsiﬁcation (performed once) is lower than the time saved in performing (the multiple) belief updates. For example, since full sparsiﬁcation leads to a diagonal approximation (information or its root), considering the collective Jacobians are sparse, belief updates can be performed with an almost linear complexity. Also, since the cost of sparsiﬁcation does not depend on the number of candidates or hypotheses, as this number grows, the relative “investment” in calculating the sparsiﬁcation becomes less signiﬁcant.
+3.2.2 Probabilistic analysis Let us analyze the suggested sparsiﬁcation algorithm from a wider perspective, using probabilistic graphical models.
+As explained, the belief b (18) is constructed as a product of factors – probabilistic constraints between variables, e.g., those induced by observations or constraints between poses. A belief can be graphically represented with a factor graph – where variable nodes are connected with edges to the factor nodes in which they are involved. In Fig. 5a, we can see an exemplary factor graph, which represents a belief b with six variables and eight factors:
+
+that all variables in S appear ﬁrst in the state. This step requires us to permute the information matrix accordingly (as shown in Fig. 4b); here, we chose S = {x1, l2, x2}. Note that variables can be conditionally dependent even if there is no factor between them. By starting the elimination with the variables in S, we force conditional separation of the variables for sparsiﬁcation and the remaining variables, i.e.,
+
+b ∝ P(S | ¬S) · P(¬S).
+
+(34)
+
+This means that the no variable in ¬S is conditionally dependent on a variable in S.
+The factorization of the belief to a product of conditional
+probabilities can be graphically represented with a Bayesian
+network (“Bayes net”), as shown in Fig. 5c. In this directed graph, the existence of an edge from node i to j indicates that i ∈ d(j). As established by Dellaert and Kaess (2006),
+this factorization is equivalent to the factorization of the (permuted) information matrix Λp to its upper triangular square root Rp (Fig. 4c). The conditional probability distribution of the i-th variable corresponds to the respective row of Rp. Off-diagonal entries in that row represent the conditional dependencies: if the off diagonal entry Ripj is non-zero, then Xj is in d(Xi), and Xj is a parent of Xi in the Bayes net; speciﬁcally, if all elements on the i-th row, besides the diagonal entry, are zero, then Xi is not conditionally dependent on any variable (according to the
+elimination order), and has no parents in the Bayes net.
+For more details, see Dellaert and Kaess (2017).
+According to the next step in the algorithm, we shall now zero off-diagonal entries in Rp, in the rows which correspond to variables in S (Fig. 4d); equivalently, this
+process can be seen as removing edges from the Bayes net
+(Fig. 5d). By removing all the off-diagonal entries from the i-th row, we replace the conditional probability distribution
+
+P(Xi|d(Xi)) = N µ(d(Xi)), (RipiT Ripi)−1
+
+(35)
+
+b(X) ∝
+fx1 · fx1l1 · fx1l2 · fx1x2 · fx2l1 · fx2l2 · fx2x3 · fx3l3 , (32)
+where the state X =. [x1, l1, l2, x2, x3, l3]T contains three poses and three landmarks, and fij is a factor between i and j. As explained, in the linear(ized) Gaussian system, the belief b is described with the information matrix Λ, as shown in Fig. 4a. Off-diagonal non-zero entries in the information matrix Λ indicate the existence of factors between the corresponding variables.
+The belief b can be factorized to a product of conditional probability distributions, in a process known as “variable elimination” (see Davis 2006):
+
+n−1
+
+b ∝ P(Xi|d(Xi)) · P(Xn),
+
+(33)
+
+i=1
+
+where d(Xi) denotes the set of variables Xi is conditionally dependent on – a subset of the variables which follow Xi according to the variable (elimination) order. Practically, ﬁxing the variable order in the state sets the decomposition of the belief. Thus, according to Algorithm 1, we begin the sparsiﬁcation process by reordering the state variables, such
+
+with an independent probability distribution over Xi,
+
+Ps(Xi) =. N µi, (RipiT Ripi)−1 .
+
+(36)
+
+Essentially, we ﬁx the mean of Xi to a constant value, which
+is no longer dependent on other variables. We, of course,
+would like to preserve the mean of the overall belief, and therefore shall select µi = Xi∗. It should be mentioned that this probability distribution is not the marginal distribution over Xi, which is given as N (Xi∗, Σii).
+The sparisiﬁed belief is thus given as the product
+
+bs ∝ Ps(x) · P(¬S).
+
+(37)
+
+x∈S
+
+The chosen elimination order makes sure that the inner dependencies among the non-sparsiﬁed variables remain exact. Notably, the suggested sparsiﬁcation is performed by manipulating the square root matrix, which is equivalent to manipulating the Bayes net. In contrast, traditional belief sparsiﬁcation methods (as we reviewed) perform sparsiﬁcation on Λ directly, or equivalently, the factor graph. Still, we would like to understand what the factordecomposition, which corresponds to the sparsiﬁed belief, is.
+
+12
+
+(a) Factor Graph
+
+(b) (Partial) Variable Elimination (c) Bayes Net
+
+(d) Bayes Net
+
+(e) Factor Graph
+
+Figure (a) The
+
+5. Visualizing the steps factor graph of the prior
+
+of Algorithm 1 (from left-to-right), for belief b (matching Fig. 4a); the state
+
+sparsiﬁcation variables are
+
+of X
+
+a=. b[exli1e,flw1,itlh2,pxr2o,bxa3b,illi3s]tTic,
+
+graphical models. and the subset of
+
+variables selected for sparsiﬁcation are S = {x1, l2, x2} (circled in green). (b) Eliminating the variables in the factor graph in order
+
+to derive the corresponding Bayes net; the ﬁgure describes an intermediate step of the elimination process, after eliminating the
+
+variables in S: x1, l2, x2 (in this order); note the added marginal factor (in purple). (c) The ﬁnal Bayes net of b, after eliminating all
+
+the variables. (d) Removing all edges which lead to variables in S (green arrows); this is the Bayes net describing the sparsiﬁed
+
+belief bs. (e) Reforming the factor graph of the sparsiﬁed belief bs; variables in S are now independent, and each is connected to a
+
+modiﬁed prior factor (in green); the remaining variables are inter-connected with the same factors which connected them originally
+
+(in black), alongside the marginal factors, which were added after elimination of S (in purple).
+
+Let us look again at the exemplary belief, given in (32). We begin its factorization (after the initial reordering) by eliminating the variables in S (in order). First, x1:
+b ∝ P(x1 | x2, l1, l2)· fx2l1l2 · fx2l1 · fx2l2 · fx2x3 · fx3l3 . (38)
+Then, l2:
+b ∝ P(x1 | x2, l1, l2) · P(l2 | x2, l1)· fx2,l1 · fx2l1 · fx2x3 · fx3l3 . (39)
+Finally, x2:
+b ∝ P(x1 | x2, l1, l2) · P(l2 | x2, l1) · P(x2 | l1, x3)· fx3l1 · fx3l3 . (40)
+This partial elimination is visualized in Fig. 5b. As we can see, after elimination of variables, new “marginal” factors (fx2l1l2 , fx2,l1 , fx3l1 ) may be introduced to the belief, representing new links among the non-eliminated variables; in our case, after eliminating all the sparsiﬁed variables, one marginal factor still remains: fx3l1 .
+According to the previous analysis, in the sparsiﬁcation, each of the conditional distributions on the sparsiﬁed variables is replaced with an independent distribution. These are, in fact, unitary factors over the variables; here, we mark those as fx1 , fl1 , fx2 . The sparsiﬁed belief can thus be given as a product of these unitary factors on the sparsiﬁed variables, the marginal factors introduced after eliminating these variables, and the remaining non-eliminated factors (here, fx3l3 ). Overall, in our example, this product is:
+
+Λ and Λs remain the same:
+|Λ| = |Λp| = RpT Rp =
+n
+|Rp|2 = (Ripi)2 = |Rsp|2
+i
+= RspT Rsp = |Λps| = |Λs|. (42)
+Hence, the sparsiﬁcation method preserves the overall entropy of the belief (as deﬁned in (25)), no matter which variables are sparsiﬁed. This is usually not guaranteed in the aforementioned traditional sparsiﬁcation methods. Still, when incorporating new factors in the future, divergence in entropy between the original and sparsiﬁed beliefs (i.e., simpliﬁcation offset) might indeed happen. This offset depends on the variables selected for sparsiﬁcation, and can even be zero, as we shall discuss next. Since the sparsiﬁed variables become independent, if we wish to update our estimation after applying new actions, or after acquiring a new observation of an existing variable (i.e., loop closure), information would no longer propagate from a sparsiﬁed variable to another variable, or vice-versa, unless they are observed together. Though, notably, unlike simply marginalizing the sparsiﬁed variables out of state, as done in ﬁltering, they can still be updated in the future.
+
+bs ∝ fx1 · fl1 · fx2 · fx3l1 · fx3l3
+
+(41)
+
+The factor graph matching this belief is shown in Fig. 5e. It is clear that the sparsiﬁcation does not affect the elimination of the remaining variables (variables in ¬S). Continuing the elimination process from either b (40) or bs (41) would result in the same distribution P(¬S).
+To complete the analysis, we shall note that this sparsiﬁcation method does not change the diagonal entries in the information root matrix, and, thus, the determinants of
+
+Figure 6. A square root matrix (taken from our experimental evaluation) and its sparse approximations generated with Algorithm 1, for different variable selections S. On the left – the original matrix; in the center – the matrix after partial sparsiﬁcation, of only the uninvolved variables (here, about half of the variables); on the right – the matrix after full sparsiﬁcation. The matrices on the left and in the center are guaranteed to be action consistent. Full sparsiﬁcation results in a convenient diagonal approximation of the information. For all degrees of sparsiﬁcation, the determinant of the matrix remains the same.
+
+Elimelech and Indelman
+
+13
+
+3.3 Optimality guarantees
+
+3.3.1 Variable selection and pre-solution guarantees Next, we shall present the conclusions of our symbolic analysis of the suggested simpliﬁcation method (as explained in Section 2.2). In this evaluation, we utilized our knowledge on the decision problem formulation, and on Algorithm 1, in order to derive general guarantees for the simpliﬁcation loss. More speciﬁcally, we shall explain which variables should be sparsiﬁed, such that the effect on the objective value for each candidate action (i.e., the simpliﬁcation offset) is minimal.
+Considering a speciﬁc action, a state variable is involved if applying the action adds a constraint (factor) on it; i.e., if g or h, which deﬁne the relevant transition and observation models (which are deﬁned in (16) and (17)), are affected by this variable. Practically, in the collective Jacobian of an action, each of the columns corresponds to a state variable, and every row represents a constraint; a variable is involved if at least one of the entries in its matching column is non-zero; uninvolved variables correspond to columns of zeros. For example, in a navigation scenario, the landmarks we predict to observe by taking the action (along with the current pose) are involved; variables referring to landmarks from the past, which we do not predict to observe, are uninvolved. An illustration of this example is given in Fig. 7.
+We emphasize that since this is a planning problem, the collective Jacobians, the objective values, and the involved variables are determined based on our prediction for the outcome of each action. Further, these components can only be based on our current belief, and not the ground truth, as it is unknown. Thus, although a landmark we identiﬁed as uninvolved, might be observed when applying the action (e.g., if the initial belief was distant from the ground truth), this is not a concern in the planning context. As explained, in our formulation, the objective function (27) relies on the “most likely” observation. In other words, we consider only the single “most likely” outcome for each action. Theoretically, we can consider multiple probabilistic outcomes for each action, each determining its own set of involved variables; as mentioned, this generalized discussion is brought by Elimelech (2021).
+We claim that for any given action, sparsifying the uninvolved variables from the prior belief b, before computing the posterior belief, would not affect the posterior entropy (which deﬁnes our objective function V ). Hence, for a set of candidate actions U, we can sparsify from the prior belief all variables which are uninvolved in any of the actions, and use this sparsiﬁed belief bs to compute the objective function, without affecting its values. Speciﬁcally, this means that the simpliﬁcation offset is zero, and that this sparsiﬁed belief is action consistent with the original one: b bs. This claim is formally expressed in Theorem 1. A proof for this claim is given in Appendix B.
+
+Theorem 1. Consider a decision problem P =. (b, U, V ),
+
+where b is a (Gaussian) initial belief, and V is the
+
+objective function from (27). Considering a set S of state
+
+variables, which are uninvolved in any of candidates in U,
+
+Algorithm 1 returns a belief where Ps =. (bs, U , V ).
+
+bs,
+
+such
+
+that
+
+∆(P, Ps) = 0,
+
+In principle, only a single sparsiﬁcation process is conducted for each decision problem (i.e., planning session), regardless of the number of candidate actions. Selecting variables which are uninvolved in any of the candidate actions allows to keep action consistency considering the entire set of candidates. Still, it is possible to break the set of actions to several subsets of similar actions, and consider the uninvolved variables in each subset. For each subset we would create a custom prior approximation, and then select the best candidate in each of the subsets, before ﬁnding the overall best candidate among those. This can result in a more adapted sparsiﬁcation for each subset. Yet, calculation of the sparsiﬁcation itself has a cost, which needs to be considered when trying to achieve the best performance. Here we examine the most general case – treating the set of actions as a whole.
+Remark We note that if we consider (1) sparsiﬁcation of only uninvolved variables; (2) the output of Algorithm 1 to be the square root matrix; and (3) no requirement to maintain the original variable order after the sparsiﬁcation
+Figure 7. A factor graph representing the belief of an agent in an exemplary full-SLAM scenario. The current (prior) state consists of three poses x1, x2, x3 (blue nodes), and the position of three landmarks l1, l2, l3 (yellow nodes), which were previously observed. Factors (black nodes) between poses mark motion constraints, and factors between a pose and a landmark mark observation constraints. At time of planning, the agent is at pose x3, and wishes to infer which of the candidate paths U = {left, right} is the optimal one. If taking the right path, the agent predicts augmenting its state with two new poses xr4ight, xr5ight, with motion constraints connecting them to the current pose; based on its current state estimation, it also predicts observing landmark l3 from xr4ight (i.e., adding an observation constraint between l3 and the new pose). The variables (from the prior state) involved with this action are those directly connected to any of the predicted new factors – x3, l3. If taking the left path, the agent predicts augmenting its state with two new poses xl4eft, xl5eft, and observing landmark l1 from xl4eft. The variables involved with this action are x3, l1. The involved variables (in any of the actions) are marked with black outline. Note that x1, x2, l2 are never involved; these are marked with dark green outline. Theorem 1 suggests that the uninvolved variables can be sparsiﬁed from the prior belief (via Algorithm 1), while maintaining action consistency.
+
+14
+
+(by instead, reordering the collective Jacobians); then, there is no need to actually zero entries in the rows of the “sparsiﬁed” variables. The initial reordering is sufﬁcient to make sure that these rows would not be updated when (incrementally) incorporating new constraints. An in-depth look at this variation was examined in our follow-up work (see Elimelech and Indelman 2019).
+We proved that sparsifying uninvolved variables does not affect the objective function values, and, therefore, they should always be included in the set S of variables for sparsiﬁcation. It is possible to sparsify also involved variables, but then “zero offset” and action consistency are not guaranteed. Intuitively, selecting more involved variables to S results in a sparser approximation, but potentially a larger divergence from the original objective values. In Appendix A.1, we show that under additional restrictions, we can symbolically derive offset (and loss) bounds also when sparsifying involved variables; these bounds are only applicable for “rank 1” updates, i.e., when the collective Jacobians are limited to a single row.
+
+3.3.2 Post-solution guarantees For a more general scenario, when sparsifying involved variables, and with actions possibly having multi-row collective Jacobians, we can try to bound the loss by performing post-solution analysis, as discussed in Section 2.2. Unlike before, such guarantees are derived after solving the simpliﬁed problem (but before applying the selected action). As explained, we can utilize the calculated (simpliﬁed) objective values, and domain-speciﬁc lower and upper bounds of the objective function (LB, UB, respectively), to yield offset bounds (6); from these offset bounds, we can then easily derive loss bounds (9).
+As our decision problem domain relies on beliefs, which, as we saw, can be represented with a (factor) graph, we can potentially exploit topological aspects to derive the desired objective bounds. For example, we can utilize conclusions from a recent work by Kitanov and Indelman (2019), which extends a previous work by Khosoussi et al. (2018). There, the following bounds on the information gain were proved, for when the corresponding factor graph contains only the agent’s poses, and each pose consists of the position and the orientation of the agent (i.e., pose-SLAM):
+
+LBtop {V (b, u)} =. 3 · ln t(b, u) + µ + H(b),
+
+(43)
+
+U Btop {V (b, u)} =.
+
+n
+LBtop {V (b, u)} + ln(di + Ψ) − ln L˜ , (44)
+
+i=2
+
+where t(b, u) stands for the number of spanning trees in the factor graph of the posterior belief (b after applying u); n marks the graph size; L˜ is the reduced Laplacian matrix of the graph; and di’s are the node degrees corresponding to L˜. They also assume that the factors between the poses are described with a constant diagonal noise covariance; µ and Ψ are constants which depend on this noise model, and the posterior graph size (i.e., the length of the action sequence). In their demonstration, they show that when the ratio between the angular variance and the position variance is small, these bounds are empirically tight. This case can
+
+happen, for example, when a navigation agent is equipped with a compass, which reduces the angular noise. For a detailed derivation of these bounds please refer to Kitanov and Indelman (2019).
+For different problem domains, it is possible to use various other objective bounds in a similar manner. For example, in Appendix A.2, we present additional bounds, which exploit known determinant inequalities. These make no assumptions on the state structure, and are potentially useful when the matrix Λ is diagonally dominant.
+4 Experimental results
+4.1 The scenario
+To demonstrate the advantages of the approach, we applied it to the solution of a highly realistic active-SLAM problem. In this scenario, a robotic agent navigates through a list of goals in an unknown indoor environment. We used the Gazebo simulation engine (Koenig and Howard 2004) to simulate the environment and the robot – Pioneer 3-AT, which is a standard ground robot used in academic research worldwide. The robot is equipped with a lidar sensor, Hokuyo UST-10LX. These components can be seen in Fig. 8. Despite examining a 2D navigation scenario, our method does not impose any restrictions on the pose size nor on the state structure.
+
+Figure 8. A Pioneer 3-AT robot in the simulated indoor environment. The robot is equipped with a lidar sensor, Hokuyo UST-10LX, as visible on top of it.
+
+staWteeXukse=d.
+
+the pose-SLAM paradigm, meaning, the agent’s (xT0 , . . . , xTk )T consists only of poses kept along
+
+its entire trajectory. Each of these poses consists of three
+
+variables, representing the position and orientation. Our
+
+approach is highly relevant in this case, in which the state
+
+size grows quickly as the navigation progresses, making the
+
+planning more computationally-challenging. The belief over
+
+the state is represented as a factor graph, and implemented
+
+using the GTSAM C++ library (Dellaert 2012). When adding
+
+a new pose to the graph, the sensor scans the environment
+
+in a range of 30 meters, and provides a point-cloud of it.
+
+This point-cloud is then matched to scans taken in previous
+
+poses using ICP matching (Besl and McKay 1992). If a
+
+match is found, a loop-closure factor (constraint) is added
+
+between these poses. To keep the computation cost of the
+
+scan matching feasible, and to avoid creating redundant
+
+constraints, we make sure to compare the current pose only
+
+to key poses within a certain range of (estimated) distances
+
+from it. Transition (motion) constraints are also created
+
+Elimelech and Indelman
+
+15
+
+between every two consecutive poses. Both the observation and motion contain some Gaussian noise, which matches the real hardware’s specs. Robot Operating System (ROS) is used to run and coordinate the system components – state inference, decision making, sensing, etc.
+The full indoor map is unknown to the robot, and it is incrementally approximated by it using the scans during the navigation. We do, however, rely on the full and exact map to produce collison-free candidate trajectories. We use the Probabilistic RoadMap (PRM) algorithm (Kavraki et al. 1996) to sample that map, and then use the K-diverse-paths algorithm (Voss et al. 2015) to build a set U of trajectories to the current goal. This usage of the map is irrelevant to the demonstration of our method; in our formulation, we consider the candidate actions are given. The complete indoor map is shown in Fig. 9, with the sampled PRM graph on it. Each trajectory matches, of course, a certain control sequence, and is translated to a series of factors and constraints to be added to the prior factor graph. Loop closure constraints are added between poses in the new trajectory, and poses in the previously-executed trajectory, according to their estimated location (i.e., where we expect to add them when executing this trajectory). The corresponding collective Jacobians of the candidate trajectories are constructed as explained in Section 3.1.
+Since all trajectories lead to the goal, we only wish to optimize the “safety” of taking the path. Meaning, keeping the uncertainty of the state low, by preferring a more informative trajectory. We use the aforementioned objective function V (from (31)) to compare between candidates. Under the “maximum likelihood” assumption, our method is only relevant to the computation of this information-theoretic measure, so for a more convenient discussion, we do not consider other objectives, such as the length of the trajectory.
+To cover its list of goals, the robot executes several planning sessions. In each session, the robot is provided with one goal, generates a set of candidate trajectories U to it, and selects the best candidate by solving a decision problem. The robot completes executing the entire selected trajectory before starting a new planning session to the next
+
+goal. To evaluate our method, in each planning session, we solved three decision problems, with each problem using another version of the initial belief. The robot’s original initial belief accounts for the trajectory of poses executed up to that point (the entire inferred state). The other two versions are generated by sparsifying the original belief using Algorithm 1 – one with partial sparsiﬁcation, and one with full sparsiﬁcation. Overall, in each session, the three conﬁgurations of the decision problem are as follows:
+1. P = (b, U, V ) – the original decision problem; 2. Pinvolved = (binvolved, U , V ) – with sparsiﬁcation of the
+uninvolved variables – an action consistent problem. We remind again that uninvolved variables correspond to columns of zeros in the collective Jacobians of all candidate actions, as explained in Section 3.3.1. 3. Pdiagonal = (bdiagonal, U , V ) – with sparsiﬁcation of all variables, leading to a diagonal information matrix, but not necessarily action consistent.
+For each conﬁguration, we measured the objective function calculation time for each candidate action, along with the one-time calculation of the sparsiﬁcation itself for the latter two. On the whole, in each planning session, we measure the total decision making time for each of the three conﬁgurations. For a fair comparison of the problems, the objective function calculation was detached from the factor graph-based implementation of the belief. From GTSAM, we extracted the square root matrix of the initial belief, and the collective Jacobians corresponding to (the factors added by) each candidate trajectory. Then, using Algorithm 1, we created the two additional versions of the prior matrix, as detailed before. For each of the three decision problems, i.e., using each version of the prior square root matrix, we calculated the corresponding posterior square root matrix (via QR update); as explained in Section 3.1.3, we could then easily extract the determinant of these triangular matrices, to calculate the objective values.
+At the end of each session, we applied the action selected by conﬁguration 1. Of course, in a real application we would only solve the problem using a single conﬁguration; here we present a comparison of the results for different conﬁgurations. We also did not invest in smart selection of variables for sparsiﬁcation, as even full sparsiﬁcation achieved very accurate results.
+
+Figure 9. The entire indoor environment from a top view. Walls are colored in light blue. The PRM graph, from which trajectories are built, is colored in red and green. Each square on the map represents a 1m×1m square in reality.
+
+4.2 Results
+In the following section we present and analyze the results from a sequence of six planning sessions. Of course, these sessions took place after the robot had already executed a certain trajectory in the environment, in order to build a state in a substantial size, and a map; if the prior state is empty, examining its sparsiﬁcation is vain. Figs. 10-15 showcase a summary of each of the planning sessions, and contain several components:
+(a) A screenshot of the scenario, which includes: the map estimation (blue occupancy grid); the current estimated position (yellow arrow-head) and goal (yellow circle); the trajectory taken up to that point (thin green line); the candidate trajectories from the current position to the goal (thick lines in various colors); and the selected trajectory (highlighted in bright green).
+
+16
+
+(b) A comparison of the objective function values of the candidate actions (i.e., trajectories), considering each of the versions of the initial belief: P with the original belief in red; Pinvolved with sparsiﬁcation of the uninvolved variables in blue; and Pdiagonal with sparsiﬁcation of all the variables in green. For scale, the comparison also contains the prior differential entropy, before applying any action. This “prior value” is not affected by the sparsiﬁcation, and is the same for the three conﬁgurations (see (42)).
+(c) A comparison of the the solution time for the three decision problems. Again, P in red, Pinvolved in blue, and Pdiagonal in green. The highlighted parts of the blue and green bars mark the cost of the sparsiﬁcation itself out of the total solution time.
+(d) A comparison of the three versions of the triangular square root matrix. The ﬁgures indicate non-zero entries in each matrix, i.e., their sparsity pattern.
+(e) The sparsity pattern of the collective Jacobians of the examined trajectories. Again, uninvolved variables are identiﬁed by having columns of zero in all the Jacobians.
+For the ﬁrst and last sessions we provide an in-depth inspection, including all the components. Since the structure of the belief and Jacobians in all the sessions is similar, for the intermediate sessions we only present a summarized version, with components (a)-(c). The square root matrix and its approximations, given previously in Fig. 6, are extracted from the third session. Additionally, the numerical data shown in the ﬁgures is summarized in Table 1. Further data regarding the loss is later given in Table 2.
+4.2.1 Efﬁciency As expected, the sparsiﬁcation leads to a signiﬁcant reduction in decision making time. The simpliﬁed problem Pdiagonal consistently achieves the best performance, followed by Pinvolved, while both are vastly more efﬁcient than the original problem P. Surely, a higher degree of sparsiﬁcation (S containing more variables) leads to a greater improvement in computation time. As discussed in Section 3.2.1, full sparsiﬁcation of the square root matrix has a particularly low cost – we only need to extract its diagonal. From Table 1 and the run-time comparison bar diagrams, it is clear that the cost of a partial sparsiﬁcation is also minor in relation to the entire decision making. In some of the diagrams, the highlighted section of the bar, which stands for the cost of the sparsiﬁcation, is hardly visible. Also, since the sparsiﬁcation cost does not depend on the number of candidate actions, the larger the set of actions is, the less signiﬁcant the sparsifcation should become.
+
+We see a correlation between the ratio of uninvolved variables and the reduction in run time with Pinvolved. Variables corresponding to the executed trajectory become involved when a loop closure factor is created between them and a candidate trajectory. Hence, the ratio of uninvolved variables represents the overlap of the candidate trajectories with the previously executed trajectory. In the ﬁrst session, the executed trajectory is short, resulting in a relatively small state size, and sparse root matrix, since not many loop closures were formed. As the sessions progress, the prior matrix becomes larger and denser, due to new loop closures, as apparent in the sixth session.
+In principle, we also notice a correlation between the state size and relative improvement in performance, for both sparsiﬁcation conﬁgurations. Updating the square root factorization, in order to calculate the posterior determinant, has, at worst, cubical complexity in relation to the matrix size. An update to a variable at the beginning of the state (i.e., a loop closure) may force us to recalculate the entire factorization, baring this maximal computational cost. Sparsiﬁcation of variables reduces the number of elements to update, and thus should be more beneﬁcial when handling larger and denser beliefs.
+4.2.2 Accuracy Alongside the undeniable improvement in efﬁciency, we can also examine the quality of the selected action. According to Theorem 1, not only P and Pinvolved are action consistent, but they produce exactly the same objective values. Hence, solving Pinvolved always leads to the optimal action selection, and induces no loss. Pdiagonal is not always action consistent with the original problem, and maintaining the same action selection is not guaranteed; however, it is evident from Figs. 10-15 that even when sparsifying all the variables, the quality of solution is maintained. Not only does the graphs of P and Pdiagonal maintain a very similar trend, which practically leads to the same action selection, and zero loss, but also the difference (offset) between them is slim. This is also evident by examining the Pearson rank correlation coefﬁcient ρ (which we mentioned in Section. 2.1) between the solutions of the original and simpliﬁed decision problems. A value of ρ = 1 represents perfect correlation of the candidate rankings (i.e., action consistency), and ρ = −1 represents exactly opposite rankings. Clearly, the calculated values, presented in Table 2, indicate that Pdiagonal indeed resulted in an action consistent solution (or very close to it). We emphasize again, that regardless of the selected action, the inference of the next state remains unchanged, as it is done on the original belief.
+
+Table 1. Numerical summary for all sessions. “Uninvolved var. ratio” represents the percentage of uninvolved variables in the prior state. “Run-time” represents the reduction in decision making time in the speciﬁed conﬁguration, in comparison to the original problem. “Non zeros” represents the reduction in the number of non-zero entries in the prior square root matrix, after using the sparsiﬁcation. “Sparsiﬁcation time” represents the cost of this one-time calculation, out of the entire problem run-time.
+
+Session Prior Size
+
+1
+
+567
+
+2
+
+762
+
+3
+
+1182
+
+4
+
+1269
+
+5
+
+1341
+
+6
+
+1392
+
+Uninvolved var. ratio 46% 74% 60% 69% 65% 44%
+
+Run-time
+-23% -34% -66% -70% -67% -52%
+
+Pinvolved Sparsiﬁcation time
+3% 4% 1% 2% 2% <1%
+
+Non zeros
+-76% -77% -83% -86% -84% -61%
+
+Run-time
+-55% -67% -85% -86% -82% -80%
+
+Pdiagonal Sparsiﬁcation time
+1% 1% 1% 2% 2% <1%
+
+Non zeros
+-97% -98% -99% -99% -99% -99%
+
+Elimelech and Indelman
+
+17
+
+Objective Value Run-time
+Objective Value Run-time
+
+(a) A screenshot of the scenario, which includes: the map estimation (blue occupancy grid); the current estimated position (yellow arrow-head) and goal (yellow circle); the trajectory taken up to that point (thin green line); the candidate trajectories from the current position to the goal (thick lines in various colors); and the selected trajectory (highlighted in bright green).
+1050
+
+1000
+
+0.4
+
+950
+
+900
+
+0.2
+
+850
+
+800
+Candidate Trajectory
+(b) Objective function comparison.
+
+0
+(c) Run-time.
+
+(a) The scenario.
+
+1380 1360 1340 1320 1300 1280 1260 1240
+Candidate Trajectory
+(b) Objective function comparison.
+
+0.4 0.2
+0
+(c) Run-time.
+
+Figure 11. Results summary for planning session #2
+
+(d) Original prior information root matrix and its sparse approximations.
+
+1
+
+2
+
+3
+
+4
+
+5
+
+9
+
+6
+
+7
+
+8
+
+10
+
+11
+
+13
+
+14
+
+15
+
+12
+
+16
+
+18
+
+19
+
+17
+
+20
+
+(e) Collective Jacobians of the candidate trajectories. Figure 10. Results summary for planning session #1.
+
+Objective Value Run-time
+
+(a) The scenario.
+
+2350
+
+2300 3.0
+2250
+
+2200
+
+2.0
+
+2150
+
+1.0
+
+2100
+Candidate Trajectory
+(b) Objective function comparison.
+
+0
+(c) Run-time.
+
+Figure 12. Results summary for planning session #3
+
+18
+
+Objective Value Run-time Objective Value Run-time
+
+(a) The scenario.
+2500
+
+2450
+
+3.0 2400
+
+2350
+
+2.0
+
+2300
+
+1.0
+
+2250
+Candidate Trajectory
+(b) Objective function comparison.
+
+0
+(c) Run-time.
+
+Figure 13. Results summary for planning session #4
+
+(a) A screenshot of the scenario, which includes: the map estimation (blue occupancy grid); the current estimated position (yellow arrow-head) and goal (yellow circle); the trajectory taken up to that point (thin green line); the candidate trajectories from the current position to the goal (thick lines in various colors); and the selected trajectory (highlighted in bright green).
+
+2900 2850 2800 2750 2700 2650 2600 2550 2500
+Candidate Trajectory
+(b) Objective function comparison.
+
+15.0 10.0
+5.0 0
+(c) Run-time.
+
+(a) The scenario.
+
+2700 2650 2600 2550 2500 2450 2400
+Candidate Trajectory
+(b) Objective function comparison.
+
+3.0 2.0 1.0
+0
+(c) Run-time.
+
+Figure 14. Results summary for planning session #5
+
+(d) Original prior information root matrix and its sparse approximations.
+
+5
+
+1
+
+2
+
+3
+
+4
+
+6
+
+7
+
+8
+
+9 10
+
+11
+
+12
+
+13
+
+14
+
+15
+
+19
+
+20
+
+16
+
+17
+
+18
+
+(e) Collective Jacobians of the candidate trajectories. Figure 15. Results summary for planning session #6.
+
+Objective Value Run-time
+
+Elimelech and Indelman
+
+19
+
+Table 2. The loss induced by the two simpliﬁed conﬁgurations, alongside the bounds on the loss (of the diagonal conﬁguration), for different noise models. The speciﬁed ratio for each bound represents the ratio between the angular variance and the position variance. No bound is calculated for the other conﬁguration, since it is guaranteed to induce no loss. The loss and its bounds are brought as a percentage of the maximal approximated value in that session. Also shown is Pearson rank correlation coefﬁcient ρ.
+
+Session
+1 2 3 4 5 6
+
+ρ(P, Pinvolved)
+1 1 1 1 1 1
+
+ρ(P, Pdiagonal)
+0.99 1 1 0.99 1 0.99
+
+loss(P, Pinvolved)
+0% 0% 0% 0% 0% 0%
+
+loss(P, Pdiagonal)
+0% 0% 0% 0% 0% 0%
+
+loss(P, Pdiagonal) bound – 0.01:1
+2% 2% 1% 1% 1% 1%
+
+loss(P, Pdiagonal) bound – 0.25:1
+16% 16% 13% 15% 16% 15%
+
+loss(P, Pdiagonal) bound – 0.85:1
+46% 47% 39% 43% 43% 41%
+
+4.2.3 Guarantees Throughout the experiment, it was possible to guarantee the quality-of-solution for Pdiagonal, by bounding loss(P, Pdiagonal) in post-solution evaluation – after solving each (simpliﬁed) planning session, and before applying the selected action. Obviously no bound should be calculated for Pinvolved, since the loss was guaranteed to be zero in our pre-solution “ofﬂine” evaluation. As explained in Section 2.2, (9) provides a formula for the loss bound, given the solution of the simpliﬁed problem (which is available), and some domain-speciﬁc bounds/limits for the objective function. Here, we used the topological bounds from (43) and (44), and assigned them in the formula to provide guarantees during each planning session.
+The tightness of these topological bounds, which affects the tightness of the loss bound, depends on the ratio between the angular variance, and the position variance, with which we model the noise in factors between poses; the smaller the angular noise is, in relation to the latter, the tighter the bounds are (as analyzed by Khosoussi et al. (2018) and by Kitanov and Indelman (2019)). Hence, we calculated the loss bound assuming different noise models (different such ratios), and examined their effects. Such a change to the noise model has a minor effect on the objective evaluation, since it does not change the sparsity pattern of the matrices; thus, we only present the effect on the inferred loss bound, and not on the entire planning process. The bounds, which were calculated assuming different noise ratios, are given in Table 2. The loss and its bounds are brought as a percentage of the maximal approximated objective function value in that session, to allow a correct comparison. In the scenario showcased before, the angular variance to position variance ratio was 0.25:1.
+Indeed, changing the noise model has a signiﬁcant inﬂuence on the tightness of the loss bounds. A ratio of 0.01:1 yields a very tight bound. It is not far-fetched that the angular variance would be this low in a navigation scenario, for example, by having a compass, as mentioned before. Raising this ratio results in more conservative bounds, especially in comparison to the exact loss, which is zero. Yet they can still be used to guarantee that the solution stays in an acceptable range. Developing tighter bounding methods for the objective function shall help making these guarantees less conservative.
+To clarify, this discussion, alongside any assumptions on the noise or state structure, is only brought in order to examine our ability to provide guarantees, using this speciﬁc topological method. It is not essential in any way in order to apply the sparsiﬁcation and improve the performance.
+
+5 Conclusions
+In an attempt to allow efﬁcient autonomous decision making, and, speciﬁcally, decision making in the (high-dimensional) belief space, we introduced a new solution paradigm, which suggests performing a conscious simpliﬁcation of the decision problem. Its impact is intended to be both conceptual and practical. Conceptually, we claimed that decision making, i.e., identiﬁcation of the best candidate action, can utilize a simpliﬁed representation or approximation of the initial state, without compromising the accuracy of the state inference process. After efﬁciently selecting a candidate action, it should be applied on the original state, which remains exact. On top of that, we presented the simpliﬁcation loss as a quality of solution measure, and explained how it can be bounded (e.g., using the simpliﬁcation offset) in order to provide guarantees. We recognized that when the simpliﬁcation maintains action consistency, i.e., when the trend of the objective function is maintained after the simpliﬁcation, there is no loss.
+Practically, when applying the paradigm to the belief space, decision making can be conducted considering a sparse approximation of the prior belief. We provided a scalable algorithm for generation of such approximations. This versatile algorithm can generate approximations of different degrees, based on the subset of state variables selected for the sparsiﬁcation. Speciﬁcally, by identifying the problem’s uninvolved variables, we can provide an action consistent approximation, which is guaranteed to preserve the action selection. As explained in Section 3.2.2, our sparsiﬁcation approach is original and intuitive, as it exploits the belief’s underlying Bayes net structure. We presented an in-depth study of our approach, and demonstrated it in a highly realistic active SLAM simulation. We showed that using sparsiﬁcation of uninvolved variables, planning time can be signiﬁcantly reduced, while, as mentioned, guaranteeing no loss in the quality of solution. We then showed that planning time can be reduced even further, when sparsifying all the state variables; in practice, for this conﬁguration, we experienced no loss in the quality of solution, as well. Nonetheless, we demonstrated how the theoretical loss in that case can be bounded.
+The proposed novel paradigm offers many possible future research directions. In general, other sparsiﬁcation methods, besides the provided algorithm, can be used in similar ways; however, their impact on the action selection should be examined. Potentially, existing (approximated) solution methods for POMDPs can also be evaluated with our
+
+20
+
+theoretical framework, to provide a standard comparison tool for measuring the accuracy of planning algorithms. Also, this framework can be used to develop a scheme for elimination of candidate actions; in fact, we have already developed a proof of concept for this idea (Elimelech and Indelman 2017b). We can also examine other simpliﬁcation methods, such as altering the action set or the objective function. Developing simpliﬁcation methods for more general beliefs, such as multi-modal Gaussians, can hold important practical signiﬁcance. Derivation of tighter loss bounds is also of interest. Overall, with the versatility of these ideas, we expect the approach to yield a substantial contribution to the research community.
+6 Acknowledgments
+The authors would like to acknowledge Dr. Andrej Kitanov from the Faculty of Aerospace Engineering at the Technion — Israel Institute of Technology, for insightful discussions concerning Section 3.3.2, and his assistance with implementing the simulation.
+7 Declaration of conﬂicting interest
+The authors declare that there is no conﬂict of interest.
+8 Funding
+This work was supported by the Israel Science Foundation (grant 351/15).
+References
+Agarwal, P. and Olson, E. (2012), Variable reordering strategies for slam, in ‘IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems (IROS)’, IEEE, pp. 3844–3850.
+Agha-mohammadi, A.-a., Agarwal, S., Kim, S.-K., Chakravorty, S. and Amato, N. M. (2018), ‘Slap: Simultaneous localization and planning under uncertainty via dynamic replanning in belief space’, IEEE Trans. Robotics 34(5), 1195–1214.
+Agha-Mohammadi, A.-A., Chakravorty, S. and Amato, N. M. (2014), ‘FIRM: Sampling-based feedback motion planning under motion uncertainty and imperfect measurements’, Intl. J. of Robotics Research 33(2), 268–304.
+Besl, P. and McKay, N. D. (1992), ‘A method for registration of 3-D shapes’, IEEE Trans. Pattern Anal. Machine Intell. 14(2), 239– 256.
+Bopardikar, S. D., Englot, B., Speranzon, A. and van den Berg, J. (2016), ‘Robust belief space planning under intermittent sensing via a maximum eigenvalue-based bound’, IJRR 35(13), 1609–1626.
+Boyen, X. and Koller, D. (1998), Tractable inference for complex stochastic processes, in ‘Proc. 14th Conf. on Uncertainty in AI (UAI)’, Madison, WI, pp. 33–42.
+Carlevaris-Bianco, N. and Eustice, R. M. (2014), Conservative edge sparsiﬁcation for graph slam node removal, in ‘IEEE Intl. Conf. on Robotics and Automation (ICRA)’, pp. 854–860.
+Carlevaris-Bianco, N., Kaess, M. and Eustice, R. M. (2014), ‘Generic node removal for factor-graph SLAM’, IEEE Trans. Robotics 30(6), 1371–1385.
+
+Chaves, S. M. and Eustice, R. M. (2016), Efﬁcient planning with the Bayes tree for active SLAM, in ‘Intelligent Robots and Systems (IROS), 2016 IEEE/RSJ International Conference on’, IEEE, pp. 4664–4671.
+Davis, T. A. (2006), Direct Methods for Sparse Linear Systems, Fundamentals of Algorithms, Society for Industrial and Applied Mathematics, Philadelphia, PA, United States.
+Davis, T., Gilbert, J., Larimore, S. and Ng, E. (2004), ‘A column approximate minimum degree ordering algorithm’, ACM Trans. Math. Softw. 30(3), 353–376.
+Dellaert, F. (2012), Factor graphs and GTSAM: A handson introduction, Technical Report GT-RIM-CP&R-2012-002, Georgia Institute of Technology.
+Dellaert, F. and Kaess, M. (2006), ‘Square Root SAM: Simultaneous localization and mapping via square root information smoothing’, Intl. J. of Robotics Research 25(12), 1181–1203.
+Dellaert, F. and Kaess, M. (2017), ‘Factor graphs for robot perception’, Foundations and Trends in Robotics 6(1-2), 1–139.
+Elimelech, K. (2021), Efﬁcient Decision Making under Uncertainty in High-Dimensional State Spaces, PhD thesis, Technion – Israel Institute of Technology.
+Elimelech, K. and Indelman, V. (2017a), Consistent sparsiﬁcation for efﬁcient decision making under uncertainty in high dimensional state spaces, in ‘IEEE Intl. Conf. on Robotics and Automation (ICRA)’, pp. 3786–3791.
+Elimelech, K. and Indelman, V. (2017b), Fast action elimination for efﬁcient decision making and belief space planning using bounded approximations, in ‘Proc. of the Intl. Symp. of Robotics Research (ISRR)’.
+Elimelech, K. and Indelman, V. (2017c), Scalable sparsiﬁcation for efﬁcient decision making under uncertainty in high dimensional state spaces, in ‘IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems (IROS)’, pp. 5668–5673.
+Elimelech, K. and Indelman, V. (2019), Introducing PIVOT: Predictive incremental variable ordering tactic for efﬁcient belief space planning, in ‘Proc. of the Intl. Symp. of Robotics Research (ISRR)’.
+Elimelech, K. and Indelman, V. (2021), ‘Efﬁcient modiﬁcation of the upper triangular square root matrix on variable reordering’, IEEE Robotics and Automation Letters (RA-L) 6(2), 675–682.
+Frey, K. M., Steiner, T. J. and How, J. P. (2017), ‘Complexity analysis and efﬁcient measurement selection primitives for high-rate graph slam’, arXiv preprint arXiv:1709.06821 .
+Ha¨mmerlin, G. and Hoffmann, K.-H. (2012), Numerical mathematics, Springer Science & Business Media.
+Harville, D. A. (1998), ‘Matrix algebra from a statistician’s perspective’, Technometrics 40(2), 164–164.
+Hsiung, J., Hsiao, M., Westman, E., Valencia, R. and Kaess, M. (2018), Information sparsiﬁcation in visual-inertial odometry, in ‘IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems (IROS)’, pp. 1146–1153.
+Huang, G., Kaess, M. and Leonard, J. (2012), Consistent sparsiﬁcation for graph optimization, in ‘Proc. of the European Conference on Mobile Robots (ECMR)’, pp. 150 – 157.
+Indelman, V. (2015), Towards information-theoretic decision making in a conservative information space, in ‘American Control Conference’, pp. 2420–2426.
+
+21
+
+Indelman, V. (2016), ‘No correlations involved: Decision making under uncertainty in a conservative sparse information space’, IEEE Robotics and Automation Letters (RA-L) 1(1), 407–414.
+Indelman, V., Carlone, L. and Dellaert, F. (2015), ‘Planning in the continuous domain: a generalized belief space approach for autonomous navigation in unknown environments’, Intl. J. of Robotics Research 34(7), 849–882.
+Kaelbling, L. P., Littman, M. L. and Cassandra, A. R. (1998), ‘Planning and acting in partially observable stochastic domains’, Artiﬁcial intelligence 101(1), 99–134.
+Kaess, M., Johannsson, H., Roberts, R., Ila, V., Leonard, J. and Dellaert, F. (2012), ‘iSAM2: Incremental smoothing and mapping using the Bayes tree’, Intl. J. of Robotics Research 31(2), 217–236.
+Karaman, S. and Frazzoli, E. (2011), ‘Sampling-based algorithms for optimal motion planning’, Intl. J. of Robotics Research 30(7), 846–894.
+Kavraki, L., Svestka, P., Latombe, J.-C. and Overmars, M. (1996), ‘Probabilistic roadmaps for path planning in highdimensional conﬁguration spaces’, IEEE Trans. Robot. Automat. 12(4), 566–580.
+Kendall, M. G. (1948), Rank Correlation Methods, Grifﬁn. Khosoussi, K., Giamou, M., Sukhatme, G. S., Huang, S.,
+Dissanayake, G. and How, J. P. (2018), ‘Reliable graph topologies for SLAM’, Intl. J. of Robotics Research . Kim, A. and Eustice, R. M. (2014), ‘Active visual SLAM for robotic area coverage: Theory and experiment’, Intl. J. of Robotics Research 34(4-5), 457–475. Kitanov, A. and Indelman, V. (2019), ‘Topological informationtheoretic belief space planning with optimality guarantees’, arXiv preprint arXiv:1903.00927 . Koenig, N. and Howard, A. (2004), Design and use paradigms for gazebo, an open-source multi-robot simulator, in ‘IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems (IROS)’. Kopitkov, D. and Indelman, V. (2017), ‘No belief propagation required: Belief space planning in high-dimensional state spaces via factor graphs, matrix determinant lemma and reuse of calculation’, Intl. J. of Robotics Research 36(10), 1088– 1130. Kretzschmar, H. and Stachniss, C. (2012), ‘Information-theoretic compression of pose graphs for laser-based SLAM’, Intl. J. of Robotics Research 31(11), 1219–1230. Ku¨nzi, H.-P. A. (2001), Nonsymmetric distances and their associated topologies: about the origins of basic ideas in the area of asymmetric topology, in ‘Handbook of the history of general topology’, Springer, pp. 853–968. Manski, C. F. (1988), ‘Ordinal utility models of decision making under uncertainty’, Theory and Decision 25(1), 79–104. McAllester, D. A. and Singh, S. (1999), Approximate planning for factored pomdps using belief state simpliﬁcation, in ‘UAI’, Morgan Kaufmann Publishers Inc., pp. 409–416. Mu, B., Paull, L., Agha-Mohammadi, A.-A., Leonard, J. J. and How, J. P. (2017), ‘Two-stage focused inference for resource-constrained minimal collision navigation’, IEEE Trans. Robotics 33(1), 124–140. Patil, S., Kahn, G., Laskey, M., Schulman, J., Goldberg, K. and Abbeel, P. (2014), Scaling up gaussian belief space planning through covariance-free trajectory optimization and automatic differentiation, in ‘Intl. Workshop on the Algorithmic
+
+Foundations of Robotics (WAFR)’, pp. 515–533. Pineau, J., Gordon, G. J. and Thrun, S. (2006), ‘Anytime point-
+based approximations for large POMDPs.’, J. of Artiﬁcial Intelligence Research 27, 335–380. Platt, R., Tedrake, R., Kaelbling, L. and Lozano-Pe´rez, T. (2010), Belief space planning assuming maximum likelihood observations, in ‘Robotics: Science and Systems (RSS)’, Zaragoza, Spain, pp. 587–593. Porta, J. M., Vlassis, N., Spaan, M. T. and Poupart, P. (2006), ‘Point-based value iteration for continuous pomdps’, J. of Machine Learning Research 7, 2329–2367. Prentice, S. and Roy, N. (2009), ‘The belief roadmap: Efﬁcient planning in belief space by factoring the covariance’, Intl. J. of Robotics Research 28(11-12), 1448–1465. Roy, N., Gordon, G. J. and Thrun, S. (2005), ‘Finding approximate pomdp solutions through belief compression’, J. Artif. Intell. Res.(JAIR) 23, 1–40. Silver, D. and Veness, J. (2010), Monte-carlo planning in large pomdps, in ‘Advances in Neural Information Processing Systems (NIPS)’, pp. 2164–2172. Stachniss, C., Haehnel, D. and Burgard, W. (2004), Exploration with active loop-closing for FastSLAM, in ‘IEEE/RSJ Intl. Conf. on Intelligent Robots and Systems (IROS)’. Thrun, S., Liu, Y., Koller, D., Ng, A., Ghahramani, Z. and DurrantWhyte, H. (2004), ‘Simultaneous localization and mapping with sparse extended information ﬁlters’, Intl. J. of Robotics Research 23(7-8), 693–716. Van Den Berg, J., Patil, S. and Alterovitz, R. (2012), ‘Motion planning under uncertainty using iterative local optimization in belief space’, Intl. J. of Robotics Research 31(11), 1263–1278. Voss, C., Moll, M. and Kavraki, L. E. (2015), A heuristic approach to ﬁnding diverse short paths, in ‘IEEE Intl. Conf. on Robotics and Automation (ICRA)’, pp. 4173–4179. Ye, N., Somani, A., Hsu, D. and Lee, W. S. (2017), ‘Despot: Online pomdp planning with regularization’, JAIR 58, 231–266.
+
+Appendices
+
+A Additional loss bounds
+
+WlsoimsesplpbiﬁreeetwsdeenevtnerhsaieorndeecPaisdsido=i.ntio(pbnsrao,lbUl,eteJmc)h,nPiwq=uh. eic(shb,
+
+to bound the U, J), and its uses a sparse
+
+belief approximation, created with Algorithm 1.
+
+A.1 Pre-solution guarantees: rank-1 updates
+We remind again that according to Lemmas 1 and 2 in Section 2.2, we can use (a bound of) the offset between the problem and its simpliﬁcation, to derive a loss bound. In Section 3.3.1, we proved that sparsiﬁcation of the uninvolved variables always results in zero offset, and hence zero loss. Now, we show that under additional restrictions, we can derive an offset bound also when sparsifying involved variables.
+Assume that for every action u ∈ U the corresponding collective Jacocian U ∈ R1×N contains only a single row, i.e., rank-1 information updates. This can be the case, for example, in sensor placement problems with scalar
+
+22
+
+measurements (like temperature). Now, let us analyze the simpliﬁcation offset:
+
+2 · δ(P, Ps, u) =
+
+(45)
+
+2 · |V (b, u) − V (bs, u)| =
+
+(46)
+
+ln Λ + U T U − ln Λs + U T U =
+
+(47)
+
+(Matrix determinant lemma (see Harville 1998))
+
+|ln |Λ| · 1 + U Λ−1U T −
+
+ln |Λs| · 1 + U Λ−s 1U T | = (48)
+
+(Eq. 42)
+
+ln 1 + U Λ−1U T − ln 1 + U Λ−s 1U T =
+
+(49)
+
+|ln 1 + U Λ−s 1U T + U (Λ−1 − Λ−s 1)U T −
+
+ln 1 + U Λ−s 1U T | = ( ) (50)
+
+The logarithm is a monotonously increasing concave function, thus, every a, b ∈ R and c ≥ 0 satisfy
+
+|ln(a) − ln(b)| ≥ |ln(a + c) − ln(b + c)|. (51)
+
+In other words, the difference in the function value between
+a pair of inputs decreases, when the inputs equally grow. Surely, 0 ≤ U Λ−s 1U T , since Λ−s 1 is positive semi-deﬁnite. Thus, we may choose a = 1 + U (Λ−1 − Λ−s 1)U T , b = 1, and c = U Λ−s 1U T . Therefore,
+
+( ) ≤ ln 1 + U (Λ−1 − Λ−s 1)U T − ln (1) = (52)
+
+ln 1 + U (Λ−1 − Λ−s 1)U T ≤
+
+(53)
+
+
+
+
+
+ln 1 + α ·
+
+(Λ−1 − Λ−s 1)ij  , (54)
+
+i,j∈Inv(u)
+
+where Inv(u) is the set of (prior state) variables involved in u, and the scalar α complies to α ≥ maxi Ui2. We recall that Ui is uninvolved ⇐⇒ Ui = 0. When considering the involved variables among all the actions, and α is valid ∀u ∈ U, this bound becomes independent of a speciﬁc action, and
+only a single expression needs to be calculated. Overall, we
+can conclude the following bound on the offset:
+
+A.2 Post-solution guarantees
+We recall that the offset can also be bounded by utilizing domain-speciﬁc upper and lower bounds of the objective function (UB, LB, respectively), as indicated in (6). In addition to the topological objective bounds, which were presented in Section 3.3.2, we may also utilize alternative bounds, which rely on known determinant bounds.
+For the lower bound, we can use Minkowski determinant inequality, which states that for positive semi-deﬁnite matrices M1, M2 ∈ RN×N
+
+1
+
+1
+
+1
+
+|M1 + M2| N ≥ |M1| N + |M2| N ,
+
+(56)
+
+1
+
+1
+
+ln|M1 + M2| ≥ N · ln |M1| N + |M2| N . (57)
+
+Let us assign M1 =. Λ, M2 =. U T U ; when U T U is not a full rank update (e.g. U has less than N rows), U T U = 0,
+and we are left with
+
+ln Λ + U T U ≥ ln|Λ|
+
+(58)
+
+For formality, it is easy to show that even if the prior state size is smaller than N , the validity of the conclusion is not compromised. For the upper bound, we can use Hadamard inequality, which states that for a positive semi-deﬁnite matrix M ∈ RN×N
+
+N
+
+|M | ≤ (M )ii.
+
+(59)
+
+i=1
+
+Let us assign M =. Λ + U T U ; then
+
+N
+
+Λ + U T U ≤ (Λ + U T U )ii,
+
+(60)
+
+i=1
+
+n
+ln Λ + U T U ≤ ln[(Λ + U T U )ii]. (61)
+
+i=1
+
+Overall, we get the following objective function bounds:
+
+∆(P, Ps) ≤
+
+
+
+
+
+1 2 · ln 1 + α ·
+
+(Λ−1 − Λ−s 1)ij  . (55)
+
+i,j∈Inv(U )
+
+As we may notice, this symbolic bound depends on the initial belief of the original and simpliﬁed problems, yet not on their solution; it hence can be utilized before actually solving the problem. When calculating this bound, we considered only single-row collective Jacobians, but otherwise arbitrary. Although, the considered assumption is restrictive, the concluded bound is indeed usable for certain problems, as evident in our follow-up work (Elimelech and Indelman 2017b). Guaranteed action consistency for the case of single-row Jacobians, which are also limited to a single non-zero entry, was previously shown by Indelman (2016).
+
+LBdet {V (b, u)} =. ln|Λ| − N · ln(2πe),
+
+(62)
+
+N
+U Bdet {V (b, u)} =. ln[(Λ + U T U )ii]
+
+i=1
+
+− N · ln(2πe), (63)
+
+where Λ is the information matrix of prior belief b, and U is the collective Jacobian of action u, and N is the posterior state size.
+Unlike the bounds presented in Section 3.3.2, these bounds are extremely general, as they make no assumptions on the state nor actions, besides the standard problem formulation. As expected, this advantage comes at the expense of tightness. Nonetheless, they may especially be useful when the matrix Λ is diagonally dominant.
+
+23
+
+B Proofs
+B.1 Lemma 1
+Proof. Refer to the proof of the more general case, stated in Lemma 6.
+
+every action a ∈ A, f (Vs(ξs, a)) = V (ξ, a). According to
+
+Lemma 4, it is sufﬁcient to prove that P Ps.
+
+To prove the opposite direction, assume P Ps. Let us
+
+deﬁne such
+
+a new that f
+
+function f (Vs(ξs, a))
+
+o=.n
+
+the domain {Vs V (ξ, a). From
+
+(ξs, a) | a ∈ A} this deﬁnition,
+
+∆(P, Psf ) = 0. Also, according to Lemma 4, this function f
+
+is monotonously increasing, and thus ∆∗(P, Ps) = 0.
+
+B.2 Lemma 2
+Proof. Refer to Elimelech (2021) for an or an extended discussion and formulation of this statement.
+B.3 Lemma 3
+The properties are trivially given from the deﬁnition of action consistency.
+
+B.6 Lemma 6
+Proof. From the deﬁnition of the simpliﬁcation offset, we know that for every monotonously increasing function f , the following is true:
+|V (ξ, a∗) − f (Vs(ξs, a∗))| ≤ ∆(P, Psf ), (69) |V (ξ, a∗s) − f (Vs(ξs, a∗s))| ≤ ∆(P, Psf ). (70)
+
+B.4 Lemma 4
+Proof. Assume f is a monotonously increasing function such that for every two actions ai, aj ∈ A
+f (V1(ξ1, ai)) = V2(ξ2, ai), f (V1(ξ1, aj)) = V2(ξ2, aj), (64)
+then
+
+f (V1(ξ1, ai)) < f (V1(ξ1, aj)) ⇐⇒ V2(ξ2, ai) < V2(ξ2, aj), (65)
+
+Because f is monotonously increasing, then f (x) < f (y) ⇐⇒ x < y, and
+
+V1(ξ1, ai) < V1(ξ1, aj) ⇐⇒ V2(ξ2, ai) < V2(ξ2, aj). (66)
+Meaning, (ξ1, A, V1) (ξ2, A, V2). Now to prove the opposite direction, assume (ξ1, A, J1)
+(ξ2, A, J2); hence,
+
+V1(ξ1, ai) < V1(ξ1, aj) ⇐⇒ V2(ξ2, ai) < V2(ξ2, aj).
+
+(67)
+
+Let us deﬁne a {V1(ξ1, a) | a ∈ A}
+
+new such
+
+function f that f (V1(ξ1
+
+on , a))
+
+t=h. eV2d(ξo2m, aai)n.
+
+Given this deﬁnition and the action consistency conditions
+
+from (67), we can conclude that
+
+f (V1(ξ1, ai)) < f (V1(ξ1, aj)) ⇐⇒ V2(ξ2, ai) < V2(ξ2, aj) ⇐⇒ V1(ξ1, ai) < V1(ξ1, aj). (68)
+Thus, f is monotonously increasing on its domain.
+
+B.5 Lemma 5
+Proof. Both directions are a direct consequence of Lemma 4. Assume ∆∗(P, Ps) = 0. Thus, a monotonously increasing function f exists such that ∆(P, Psf ) = 0. Meaning, for
+
+Removing the absolute values surely does not compromise the inequalities:
+
+V (ξ, a∗) − f (Vs(ξs, a∗)) ≤ ∆(P, Psf ),
+
+(71)
+
+f (Vs(ξs, a∗s)) − V (ξ, a∗s) ≤ ∆(P, Psf ).
+
+(72)
+
+By adding the two inequalities, and utilizing the deﬁnition of the loss, we get:
+
+loss(P, Psf ) + f (Vs(ξs, a∗s)) − f (Vs(ξs, a∗)) ≤ 2 · ∆(P, Psf ). (73)
+
+From the deﬁnition of a∗s, we know that
+
+Vs(ξs, a∗s)) ≥ Vs(ξs, a∗).
+
+(74)
+
+Since f is monotonously increasing, then also
+
+f (Vs(ξs, a∗s))) ≥ f (Vs(ξs, a∗)), (75)
+
+f (Vs(ξs, a∗s))) − f (Vs(ξs, a∗)) ≥ 0.
+
+(76)
+
+Thus, we can infer that
+
+loss(P, Psf ) ≤ 2 · ∆(P, Psf ).
+
+(77)
+
+Since the ﬁnal statement is true for any monotonously increasing function f , we may conclude the desired upper bound over the loss,
+
+loss(P, Ps) ≤ 2 · ∆∗(P, Ps)
+
+(78)
+
+B.7 Lemma 7
+
+Proof.
+
+Lwδ(ehPteir,euPsPj ,ieax=).a=m.(ξi|inV,eiA(ξ,tiVh,riae)).e
+
+decision problems P1, P2, P3, First, let us deﬁne the notation − Vj(ξj, a)|. Now, for each two
+
+problems Pi fij as the
+
+, Pj, we balance
+
+mark aij ∈ function, for
+
+A as the action, which ∆∗(Pi, Pj
+
+)an=.d
+
+δ(Pi, Pjfij , aij) (the values can be chosen arbitrarily from
+
+all values which comply to the equation). According to this
+
+24
+
+notation we can conclude:
+∆∗(P1, P2) + ∆∗(P2, P3) =. δ(P1, P2f12 , a12) + δ(P2, P3f23 , a23) ≥ δ(P1, P2f12 , a13) + δ(P2, P3f23 , a13) =. |V1(ξ1, a13) − f12(V2(ξ2, a13))|+
+|V2(ξ2, a13) − f23(V3(ξ3, a13))| ≥ |V1(ξ1, a13) − f12(V2(ξ2, a13))+
+V2(ξ2, a13) − f23(V3(ξ3, a13))| =. ( ). (79)
+Let us deﬁne the following scalar function:
+
+F (x) =. f23(x) + f12(V2(ξ2, a13)) − V2(ξ2, a13) = f23(x) + constant. (80)
+
+Since f23 is a monotonously increasing, so is F , and
+
+( ) = |V1(ξ1, a13) − F (V3(ξ3, a13))| =.
+
+δ(P1, P3F , a13) ≥
+
+(81)
+
+δ(P1, P3f13 , a13) =
+
+∆∗(P1, P3).
+
+Hence, ∆∗ satisﬁes the triangle inequality.
+
+Rs =. P RspP T =
+
+ d∈R
+
+0
+
+P  
+
+...
+
+0
+
+0...0 
+ PT = triangular  
+
+0
+
+ 
+
+...
+
+ 
+
+0
+
+ 
+
+d
+
+ 
+
+0
+
+  
+
+...
+
+0
+
+
+
+triangular 0...0 0
+
+∗ 
+
+
+
+
+
+0...0
+
+ 
+
+P
+
+T
+
+=
+
+
+
+
+
+
+
+triangular
+
+ 
+
+
+
+0
+
+
+
+ triangular 
+
+...
+
+∗ 
+
+ 
+
+0
+
+ 
+
+ 
+
+0...0
+
+d
+
+0...0
+
+ 
+
+.
+
+ 
+
+0
+
+ 
+
+ 0 
+
+...
+
+
+
+triangular
+
+ 
+
+0
+
+(84)
+
+Recursively utilizing this conclusion, for more intricate permutations, proves that Rs is indeed triangular, whenever permuting the sparsiﬁed variables back to their original order, as desired.
+
+B.8 Corollary 1
+Proof. Let us mark as Rsp the sparsiﬁed square root matrix, before permuting the variables back to their original order in line 8 of Algorithm 1. First, we show that applying the reverse permutation P 2P T on Rsp indeed leads to a square root of the sparse information matrix Λs (in the original order):
+
+(P RspP T )T (P RspP T ) = P RspT RspP T = P ΛpsP T = Λs,
+(82) where Λps is the sparsiﬁed information matrix, before
+permuting the variables back. Now, we want to examine the shape of the matrix Rs =.
+P RspP T , and show that it is indeed triangular. According to Algorithm 1, before executing line 8, Rsp is of the following
+structure:
+
+Rsp =
+
+diagonal
+
+0
+
+0 triangular
+
+,
+
+(83)
+
+where the rows of the diagonal block correspond to the sparsiﬁed variables. Without losing generality, we should only prove that applying a permutation of the form p : (1, . . . , n) → (2, . . . , i, 1, i + 1, . . . , n) on this matrix (i.e., “pushing forwards” one of the sparsiﬁed variables), does not break the triangular form. Hence, assuming P T is the column permutation matrix matching such p , let us look at
+
+B.9 Theorem 1
+
+Proof.
+
+Consider a belief b = N (X∗, Λ−1), where the state contains
+
+n1 uninvolved variables and n2 involved variables, such
+
+that n = n1 + n2 is the prior state size. Also consider the simpliﬁed belief bs = N (X∗, Λ−s 1), in which all uninvolved
+variables were sparsiﬁed, by applying Algorithm 1.
+
+We mark with P the (column) permutation matrix that
+
+positions all the involved variable at the end of the state.
+
+Now, let Rp be information matrix
+
+the Λp
+
+=.ChPoTleΛskPy
+
+,
+
+factor of the permuted such that Λp = RpT Rp.
+
+This Rp can be divided into block form:
+
+Rp =.
+
+R1p1 0n2 ×n1
+
+R1p2 R2p2
+
+,
+
+(85)
+
+where R1p1 ∈ Rn1×n1 and R2p2 ∈ Rn2×n2 are triangular submatrices, R1p2 ∈ Rn1×n2 , and 0n1×n2 is a zero matrix in the speciﬁed size. By following the steps of Algorithm 1, we
+
+irPseaTlgiΛzivesePtnha=ta. stRheΛspTrseR=t.usprP)n,ewRdhspseTpraeRrsspiPﬁeTd
+
+information matrix Λs (or, equally, satisﬁes
+
+Rsp =.
+
+D1p1 0n2 ×n1
+
+0n1 ×n2 R2p2
+
+,
+
+(86)
+
+adniadgoDna1pl1ofisRt1ph1e
+
+diagonal matrix formed by copying (and assigning zero elsewhere).
+
+the
+
+We would like to ﬁnd the simpliﬁcation offset between the
+
+two decision problems P and Ps (for which b and bs are
+
+25
+
+the initial beliefs, respectively). Let us consider a candidate action u ∈ U with a collective Jacobian U ∈ Rh×(n+m), where n + m is the posterior state size. We may derive the
+following from the deﬁnition of the offset and the objective function V :
+
+δ(P, Ps, u) =
+
+1 ·
+2
+
+ln Λ˘ + U T U
+
+− ln Λ˘s + U T U
+
+.
+
+(87)
+
+Now, let us examine the following expression:
+
+# =. Λ˘ + U T U − Λ˘ s + U T U ,
+
+(88)
+
+Thus, if we mark R˘1p2 =. R1p2 0n1×m , then the left term in (93) is:
+
+R˘p T R˘p U P˘ U P˘
+
+=
+
+R1p1T R1p1 R˘1p2T R1p1
+
+R1p1T R˘1p2 R˘1p2T R˘1p2 + BT B
+
+.
+
+(97)
+
+From the block-determinant formula (see Harville 1998), this
+
+equals to
+
+R1p1T R1p1 · R˘1p2T R˘1p2 + BT B − . . .
+
+We know that (unitary) variable permutation does not affect the determinant of a matrix, thus
+
+# = P˘ T Λ˘ + U T U P˘ − P˘ T Λ˘ s + U T U P˘ = P˘T Λ˘ P˘ + (U P˘)T (U P˘) − P˘T Λ˘ sP˘ + (U P˘)T (U P˘) , (89)
+
+where
+
+P˘ =.
+
+P
+
+0n×m
+
+0m×n I m×m
+
+(90)
+
+R˘1p2T R1p1R1p1−1R1p1T −1R1p1T R˘1p2 = |R1p1|2 · BT B
+
+(98)
+
+The right term in (93) is:
+
+R˘sp T R˘sp U P˘ U P˘
+
+=
+
+D1p1T D1p1 0
+
+0 BT B
+
+= D1p12 · BT B (99)
+
+is the augmented permutation matrix, which keeps the
+variables added in the update at the end of the state. Note
+that if the variables were not originally added to the end of the state, the permutation P˘ can be easily adapted to enforce
+this property. We can also augment the matrix Rp with m empty
+columns (and similarly for Rsp):
+
+R˘p =.
+
+R1p1 0n2 ×n1
+
+RR12pp22
+
+0n×m
+
+,
+
+(91)
+
+Since R1p1 and D1p1 are triangular matrices with the same diagonal, their determinants are equal (to the product of the
+diagonal elements). Thus, # = 0, and overall
+
+Λ˘ + U T U = Λ˘ s + U T U .
+
+(100)
+
+This surely means that
+
+ln Λ˘ + U T U − ln Λ˘ s + U T U = 0.
+
+(101)
+
+and assign the result in #, to yield:
+
+Finally, assigning this expression in (87) means that
+
+#= R˘pT R˘p + (U P˘ )T (U P˘ ) − R˘spT R˘sp + (U P˘ )T (U P˘ )
+(92)
+
+This expression can be reorganized to the following form:
+
+#=
+
+R˘p T R˘p U P˘ U P˘
+
+−
+
+R˘sp T R˘sp
+
+U P˘
+
+U P˘
+
+(93)
+
+δ(P, Ps, u) = 0.
+
+(102)
+
+Since the previous conclusion is true ∀u ∈ U, this means that
+
+∆(P, Ps) =. max δ(P, Ps, u) = 0,
+u∈U
+
+(103)
+
+as desired.
+
+The two matrices which appear in this expression also follow a block form:
+
+R˘p U P˘
+
+=
+
+R1p1 0(n2 +h)×n1
+
+R1p2 0n1×m B
+
+,
+
+(94)
+
+R˘sp U P˘
+
+=
+
+D1p1 0(n2 +h)×n1
+
+0n1 ×(n2 +m) B
+
+,
+
+(95)
+
+where
+
+B =.
+
+R2p2 0n2×m U inv
+
+,
+
+(96)
+
+and U inv is a sub-matrix of U P˘, containing its right n2 + m columns. Since the left n1 columns of U P˘ correspond to uninvolved variables, we know they may only contain zeros.
+

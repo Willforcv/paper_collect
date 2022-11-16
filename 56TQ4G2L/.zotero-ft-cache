@@ -1,0 +1,490 @@
+Geometry-based Graph Pruning for Lifelong SLAM
+Gerhard Kurz, Matthias Holoch, Peter Biber
+
+arXiv:2110.01286v1 [cs.RO] 4 Oct 2021
+
+Abstract— Lifelong SLAM considers long-term operation of a robot where already mapped locations are revisited many times in changing environments. As a result, traditional graphbased SLAM approaches eventually become extremely slow due to the continuous growth of the graph and the loss of sparsity. Both problems can be addressed by a graph pruning algorithm. It carefully removes vertices and edges to keep the graph size reasonable while preserving the information needed to provide good SLAM results. We propose a novel method that considers geometric criteria for choosing the vertices to be pruned. It is efﬁcient, easy to implement, and leads to a graph with evenly spread vertices that remain part of the robot trajectory. Furthermore, we present a novel approach of marginalization that is more robust to wrong loop closures than existing methods. The proposed algorithm is evaluated on two publicly available real-world long-term datasets and compared to the unpruned case as well as ground truth. We show that even on a long dataset (25h), our approach manages to keep the graph sparse and the speed high while still providing good accuracy (40 times speed up, 6cm map error compared to unpruned case).
+I. INTRODUCTION
+Graph-based approaches are widely considered the most popular solution to the simultaneous localization and mapping (SLAM) problem [1] due to their reliability, ﬂexibility, and favorable computational cost [2, Sec. II]. In lifelong SLAM [3], we assume that an area is not just mapped once but revisited continuously over a long period of time. This leads to a number of additional challenges compared to a standard SLAM problem where an area is only covered once or twice during a short period of time [2, Sec. III & IV]. This paper focuses on one of these challenges: scalability. The graph grows indeﬁnitely over time, which makes the SLAM algorithm prohibitively slow and implies virtually unlimited memory requirements.
+To illustrate the problem, imagine an environment of a limited size. A robot keeps moving around in this environment for a long time while running a naive graph-based SLAM algorithm that continuously adds new measurements to its map. The number of vertices in the graph as well as the memory requirements will typically increase roughly linearly w.r.t. the time spent driving. As parts of the environment are traversed again and again, more and more loop closure edges will get added between nearby vertices. In the worst case, this leads to a quadratic number of edges w.r.t. time and to a graph whose structure is not sparse anymore. This impacts the runtime severely, because commonly used optimizers such as g2o [4] or gtsam [5] are only efﬁcient if the graph is sparse and become extremely slow for dense graphs.
+The authors are with Robert Bosch GmbH, Corporate Research, Germany. E-mail: {gerhard2.kurz, matthias.holoch, peter.biber}@de.bosch.com We thank Kai O. Arras and Artur Koch for their helpful input.
+
+Fig. 1: SLAM map of an apartment without (left) and with pruning (right) using the proposed approach.
+The goal of graph pruning is to carefully remove redundant vertices and edges, while minimizing the loss in localization and mapping accuracy. The algorithm ensures that the size of the graph only scales with the size of the environment and becomes independent of the time spent there or the length of the robot’s trajectory. An example of the effects of pruning is shown in Fig. 1.
+In this paper, we present a novel approach that performs vertex pruning based on geometric criteria. Speciﬁcally, we make the following contributions:
+1) An efﬁcient approach for vertex pruning based on a scale-invariant density that does not depend on the data associated to a given vertex and leads to an even distribution of vertices in the pruned graph.
+2) A marginalization algorithm that is robust to incorrect loop closures.
+3) A thorough evaluation on two real-world datasets using different pruning parameters.
+4) An evaluation scheme that does not require ground truth and is independent of the particular SLAM algorithm by comparing the graph with and without pruning.
+II. RELATED WORK
+Several other authors have considered the problem of graph pruning before. Kretschmar et al. [6] proposed a pruning scheme where the information gain of each lidar scan is computed using a probabilistic occupancy grid. Then, the vertices whose lidar scans provide the least additional information are removed. Marginalization of vertices is performed by replacing all edges of the pruned vertex with edges connected to one of its neighbors. An improved version of the paper uses a Chow–Liu tree [7] to approximate the clique obtained by marginalization [8].
+Eade et al. proposed a similar graph pruning approach [9, Sec. VIII] in the context of visual SLAM. Nodes in the graph are divided into view and pose nodes, the latter of which can
+
+©2021 IEEE. Personal use of this material is permitted. Permission from IEEE must be obtained for all other uses, in any current or future media, including reprinting/republishing this material for advertising or promotional purposes, creating new collective works, for resale or redistribution to servers or lists, or reuse of any copyrighted component of this work in other works.
+
+be pruned after a while because they only encode the robot’s trajectory and constraints in the graph but are not relevant for the map itself. Marginalization is performed by inserting binary edges between all vertices adjacent to a pruned vertex, which leads to the creation of numerous new edges. Hence, the authors proposed an edge pruning algorithm that uses a simple heuristic to remove superﬂuous edges.
+Lazaro et al. suggested a somewhat different approach where multiple scans are aggregated into a local map, which corresponds to a single vertex in the graph [10]. Later, several local maps can be merged into a single vertex by building on the idea of condensed measurements previously proposed by Grisetti et al. [11]. Their approach effectively combines pruning and change detection into a single operation. A disadvantage is that newly created vertices are not located on the robot’s trajectory anymore.
+Carlevaris-Bianco et al. have further investigated the issue of marginalizing vertices from the graph [12], [13]. They propose an exact marginalization using n-ary factors and a sparse approximation, which is based on a Chow–Liu tree. This approach is different from [8], where the tree-based approximation is computed from binary factors. The beneﬁt of considering n-ary factors is that correlations between binary factors are not ignored and that the approach can also be applied to factors that do not constrain the full state (e.g., bearing only measurements, range only measurements). Later works by Mazuran et al. [14] and Ta et al. [15] generalize and improve this approach further.
+A pruning approach for feature-based SLAM was proposed by [16]. They use the Kullback–Leibler divergence between the graph before and after pruning to decide which vertex to prune. For marginalization, they consider different ways to approximate the clique using fewer edges. Unfortunately, their work is not directly applicable to non-feature based SLAM, e.g., lidar SLAM based on scan matching.
+III. VERTEX PRUNING
+In order to keep the number of vertices inside the graph limited, it is necessary to carefully remove vertices over time. In general, there are two strategies, selecting one or more vertices and 1) marginalizing them [6], [8], [9], or 2) fusing them into one [10]. In lidar SLAM, the second option has the disadvantage that the lidar scans have to be fused and that pose of the new vertex does not match the pose where the lidar scans were originally observed. This complicates or invalidates potential successive processing steps such as raytracing of free space using scan poses as, e.g., proposed for change detection in [17]. In addition, all further information that may be associated with the involved vertices has to be fused as well. Finally, the fused vertex is not part of the original trajectory and may be located on impassable terrain. For these reasons, we only consider the ﬁrst option in the following.
+Hence, the key question is: How do we choose which vertices to remove? In general, one could consider the simultaneous removal of multiple vertices and analyze the combined effect of this operation. However, this is difﬁcult
+
+to analyze and for the sake of simplicity, we only consider removing a single vertex at a time. When choosing which vertex to remove, we would like to pick a vertex that is of low importance to the overall map quality and whose removal degrades the expected future performance of the SLAM algorithm as little as possible. In order to quantify the importance of a vertex, geometric or information-theoretic measures can be used.
+Information-theoretic measures try to quantify the information contained in each vertex or, as proposed by Kretschmar et al. [6, Sec. 4.1], [8, Sec. IV], its associated laser scan. The idea is then to remove vertices in such a way that the loss of information is minimized. The main problem with this approach is that the actual information within a scan is hard to quantify. Kretschmar et al. compute the information based on the occupation probabilities of cells in a probabilistic grid map. However, this approach tends to consider scans with high noise, false measurements, or poor alignment to be high in information because they affect the probabilities inside the grid map more strongly than well aligned scans with little noise that agree well with other scans of the environment. Also, this information measure is fairly expensive to compute because all points in scans within range of the current vertex contributed to the result. This can be problematic especially for lidars with long range and high resolutions.
+For these reasons, we propose to use geometric methods for vertex pruning. The basic idea is to keep the density of vertices below a certain threshold across the entire map, i.e., we seek to remove vertices in places where a lot of vertices cluster within a small area. For this purpose, we propose a novel density measure, which we call scale-invariant density.
+
+A. Scale-invariant density
+Consider vertices with unique positions v1, . . . , vn ∈ R2, where vi = vj for i = j.
+
+Deﬁnition 1. For a radius r > 0, deﬁne the r-density of a
+
+vertex vi as
+
+dr(vi) = #{ vj − vi
+
+< r : 1 ≤ j ≤ n, i = j}
+
+πr2
+
+,
+
+where · is the Euclidean norm. This corresponds to the
+
+number of vertices (excluding vi) inside the circle of radius r around vi divided by the circle’s area.
+
+However, this measure is strongly dependent on the choice of the radius r. In particular, after pruning vertices inside the radius r, there may be a lot vertices whose distance from vi is just slightly larger than r, which leads to underestimating the actual density of vertices around vi.
+In a pruning algorithm, this can leave behind clusters of vertices that are just slightly more than r apart. This issue is illustrated in Fig. 2, where we consider the effect of vertex pruning on two synthetic examples.
+To address the deﬁciencies of the radius-based density dr(vi), we propose the scale-invariant density, which is independent of any ﬁxed scale r. It is obtained by integrating over all r ∈ (0, ∞).
+
+(a) grid, original
+
+(b) grid, density-based
+
+(c) grid, sid-based
+
+(d) random, original
+
+(e) random, density-based
+
+(f) random, sid-based
+
+Fig. 2: Vertex pruning approaches on synthetic examples (regular grid and a random trajectory). Odometry edges are shown in blue and loop closure edges are shown in magenta. The original graph is pruned using a simple density-based approach with r = 0.45 m (see Deﬁnition 1) or using the scale-invariant density (see Deﬁnition 2). Observe that the proposed sid-based approach yields more evenly spread vertices.
+
+Deﬁnition 2. The scale-invariant density of vi is given by
+∞
+d(vi) = dr(vi)dr .
+0
+
+As a result, this measure is not susceptible to the clustering problem mentioned above. In order to efﬁciently compute the density measure, we use the following theorem.
+
+Theorem 1. It holds that
+
+1 d(vi) = π
+
+vk − vi −1
+
+k∈{1,...,n}\{i}
+
+Proof. Wlog., we consider the parameter vn and assume that all other vi for i = 1, . . . , n − 1 are sorted by distance ri = vi − vn according to r1 ≤ · · · ≤ rn−1. Then, we can
+
+simplify
+
+∞
+
+d(vn) = dr(vn)dr
+0
+
+n−2 rk+1
+
+∞
+
+=
+
+dr(vn)dr +
+
+dr (vn )dr
+
+k=1 rk
+
+rn−1
+
+k n−2 rk+1
+
+∞ n−1
+
+=
+
+dr +
+
+dr
+
+k=1 rk
+
+πr2
+
+rn−1 πr2
+
+=
+
+n−2 k π
+
+rk−1 − rk−+11
+
+k=1
+
++
+
+n
+
+− π
+
+1 rn−−11
+
+1 =
+π
+
+n−1
+rk−1
+
+k=1
+
+For practical use, this sum can be truncated to the closest
+
+Algorithm 1: Vertex Pruning
+
+Input: graph (V, E), thresholds nˆ, sˆ Output: updated graph (V, E) repeat
+V˜ ← {v ∈ V : v can be pruned};
+
+/* Find vertex with largest sid
+
+*/
+
+vmax ← arg maxv∈V˜ d(v);
+
+/* Remove vertex if density above sˆ
+
+*/
+
+if d(vmax) > sˆ then
+
+(V, E) ← marginalize (V, E), vmax ;
+
+else
+
+break;
+
+until #V˜ ≤ nˆ; return (V, E);
+
+Nˆ ∈ N neighbors, which speeds up computation and leads to a more localized version of the density. Based on Theorem 1, it is easy to show that scaling the positions of the vertices corresponds to inversely scaling the density.
+B. Vertex Pruning Algorithm
+Based on the density function introduced above, we propose a vertex pruning algorithm. This algorithm tries to ﬁnd the vertex with highest density, marginalizes it and repeats until the graph size is below a predeﬁned threshold nˆ ∈ N or no more vertices have a density below the density threshold sˆ ∈ (0, ∞). Furthermore, it can be desirable to exclude certain vertices from pruning. For example, we always keep the most recent mˆ ∈ N vertices to prevent pruning vertices prematurely, which could lead to poor robustness. We deﬁne the set of prunable vertices as V˜ ⊆ V and only consider theses vertices as candidates for pruning. Note that the density d(vi) is still calculated using all vertices including non-prunable ones. Pseudocode of the proposed algorithm is given in Algorithm 1.
+It should be noted that the proposed algorithm does not consider the direction the robot was facing at each vertex. This is ﬁne for robots whose ﬁeld of view is 360◦or close to that. However, for robots with a small ﬁeld of view it may be necessary to ﬁrst partition the vertices by viewing angle and prune each partition separately.
+C. Marginalization
+Once we have chosen a vertex to prune from the graph, we need to consider how to perform the removal of a given vertex. The graph encodes the joint probability distribution of the random variables represented by all vertices. Thus, removing a vertex corresponds to marginalizing a set of random variables.
+Marginalization is typically performed by creating an n-ary constraint between all neighbors of the pruned vertex [13, Sec. II]. Some authors approximate this n-ary constraint by connecting all neighbors of the pruned vertex pair-wise, i.e., vertices adjacent to the pruned vertex will form a clique. This leads to a huge number of edges if the pruned vertex has a lot of neighbors or if several vertices are pruned successively [8, Sec. V-A]. As a result, this method for marginalization is
+
+infeasible in practice, at least unless an aggressive edge pruning scheme is employed to remove most of these edges later (see Sec. IV).
+To obtain a more sparse approximation of the graph in the neighborhood of the pruned vertex, several authors have proposed using a Chow–Liu tree [7] either directly from an n-ary constraint [13] or by selecting a subset of the fully connected graph of binary constraints among all neighbors [8, Sec. V-C]. Either way, the Chow–Liu tree approximates the neighborhood of the marginalized vertex using a spanning tree weighted by the mutual information between the vertices involved. As the local tree structure might be too sparse in practice, other subgraphs have been considered, e.g., the Cliquey approach [14].
+1) Impact of Wrong Loop Closures on Marginalization: An important issue that has not been sufﬁciently considered in related work on graph pruning is the inﬂuence of incorrect loop closures during marginalization. Typical SLAM algorithms can be made resilient to a small number of incorrect loop closures by using robust kernels in the error function or by speciﬁcally determining which loop closures are outliers using an expectation maximization algorithm [18]. However, marginalization can amplify wrong loop closures. After multiple marginalization steps, even a single wrong loop closure might be ampliﬁed enough to lead to divergence. This is particularly problematic because wrong loop closures often do not have higher uncertainty according to their information matrix than correct loop closures because the scan matching algorithm only provides a local uncertainty estimate.
+Consider the following example. We would like to prune a vertex v0 with n edges to v1, . . . , vn. Let us assume that a single edge (v0, vi), i ∈ {1, . . . , n} is incorrect, i.e., the ratio of incorrect edges is 1/n. After marginalization of v0, the combined n-ary constraint would be incorrect. We now approximate this constraint by creating pairwise edges (vi, vj) for i = j ∈ {1, . . . , n}. This yields n·(n−1)/2 newly created edges, of which n−1 are wrong edges. Therefore, the number of incorrect edges increased from 1 to n − 1 and the ratio of incorrect edges increased from 1/n to 2/n. In addition, if there already was an edge between one of v0’s neighbors (vi, vj) for i = j ∈ {1, . . . , n} before marginalization, the existing and new edges would get fused. This leads to an incorrect edge if either of the original edges was incorrect, i.e., the ratio of incorrect edges would be even larger.
+In practice however, we make the observation that odometry edges are typically much more reliable than loop closure edges even if they possess the same uncertainty. While odometry can drift over time and may be somewhat inaccurate, it is usually not affected by outliers with huge errors like loop closures. As a result, we propose a marginalization algorithm that is founded on the reliability of the odometry chain and is fairly robust to wrong loop closures.
+2) Marginalization Algorithm: In [6, Sec. 4.2], an approximate marginalization was proposed where all edges of the pruned vertex are collapsed into a single neighboring vertex. This vertex is chosen such that the sum of lengths of all resulting edges is minimized. We propose a similar method
+
+Algorithm 2: Marginalization
+
+Input: graph (V, E), vertex v ∈ V to be marginalized Output: updated graph (V, E) L ← {e ∈ E : e adjacent to v ∧ e loop closure }; ein = (vprev, v) ← odo edge into v; eout = (v, vnext) ← odo edge out of v; V ← V \{v}; E ← E\{e ∈ E : e adjacent to v};
+
+/* Move loop closure edges along odometry
+
+chain
+
+*/
+
+for e = (v, vother) ∈ L do
+
+din = vprev − vother ;
+
+dout = vnext − vother ;
+
+if din < dout then
+
+E ← E ∪ {concatenateEdges(ein, e)};
+
+else
+
+E ← E ∪ {concatenateEdges(e, eout)};
+
+return (V, E);
+
+that also collapses edges into adjacent vertices. However, we do not collapse all edges into a single vertex but instead move each loop closure forward or backward along the odometry chain depending on the distance between the vertices of the newly created edge. Pseudocode of this procedure is given in Algorithm 2.
+To concatenate edges, we need three elementary operations, composition of two edges, combination of two edges and inversion of an edge, see [9, Sec. VII-B]. The equations for these operations depend on the exact error function used in the optimizer (in particular the frame covariances are represented in) and can be computed in closed-form.
+In the proposed algorithm, the number of wrong loop closures does not change during marginalization. Considering the same example as above, our algorithm reduces the number of edges from n to n − 1, and thus the ratio of incorrect loop closures rises only slightly from 1/n to 1/(n − 1). When combining edges, we can detect contradictory edges by considering the differences in their relative poses or the Mahalanobis distance. If an odometry edge and a loop closure contradict, we trust the odometry edge and delete the loop closure. If two loop closures contradict, we delete them both as losing a correct loop closure is usually preferable to having an incorrect loop closure in the graph.
+D. Evaluation
+To investigate the behavior of the proposed algorithm in the presence of wrong loop closures, we created a synthetic example based on a 30 × 30 grid similar to Fig. 2 and randomly replaced a given percentage of the loop closures with incorrect loop closures. Then, we applied pruning using different marginalization methods, optimized the graph again and compared the vertex positions to the true positions. In Fig. 3, we show the results from 50 Monte Carlo runs with different random broken loop closures. It can be seen that the proposed algorithm even slightly outperforms the original SLAM algorithm without pruning, which is mainly due to
+
+5 proposed
+Chow-Liu tree
+no pruning 4
+
+mean error over all vertices (m)
+
+3
+
+2
+
+1
+
+0 0.00
+
+0.01
+
+0.02
+
+0.03
+
+0.04
+
+false loop closure probability
+
+0.05
+
+Fig. 3: Inﬂuence of wrong loop closures on the vertex position error. We show the median, 25%, and 75% quantiles over 50 Monte Carlo runs.
+
+the detection and removal of some of the false loop closures when they contradict other edges. The Chow-Liu approach performs signiﬁcantly worse and diverges completely in some cases.
+IV. EDGE PRUNING
+In addition to vertex pruning and the removal of edges during marginalization, we also propose an independent edge pruning step, which removes superﬂuous edges without touching vertices at all. This is mostly beneﬁcial in areas where vertices are not particularly dense but a lot of loop closures have been found. Also, depending on the particular algorithm, a lot of edges may be created during marginalization. In general, removing an edge is equivalent to removing one constraint from the graph and means losing the information encoded in that edge.
+To choose which edges to prune, we consider the vertex with the largest number of edges and remove one of its edges via an edge selection criterion. This step is repeated until all vertices have less than a predeﬁned number of edges eˆ ∈ N. The key question is how to choose the edge selection criterion. Eade et al. employed pruning based on the edge residuals. Edges with the smallest residual are pruned ﬁrst [9, Sec. VIII-C]. However, using the residual (or the χ2 error) means that edges with large errors (e.g., noisy edges, poor scan matches, wrong loop closures) will be kept and edges with small errors (good matches) will be discarded.
+We therefore propose to use the trace or determinant of the edges’ covariance/information matrices as an alternative criterion. As the differences between these measures seem to be small in practice, we decided to use the trace of the information matrix, which is efﬁcient to compute. We favor keeping edges with more certain estimates over edges with less certain estimates, i.e., edges with little information will be pruned.
+Removing edges comes with the risk of removing important global loop closures or even disconnecting the graph. To avoid pruning edges that keep the graph together, we consider the factor d by which the shortest path gets longer when removing an edge. Assume we want to prune the edge (vi, vj) with length vi − vj . If we removed this edge, the
+
+TABLE I: Pruning parameters used during evaluation.
+
+Conﬁg Name sˆ Nˆ nˆ mˆ eˆ dˆ
+
+paggressive pcautious preference
+
+5.0 10 50 50 5 5.0 15.0 10 50 50 5 5.0
+No pruning
+
+TABLE II: Datasets used for evaluation.
+
+Dataset
+LCAS Strands Care Home
+MIT Stata Center
+
+Run
+2016-11-25 2016-12-02 2016-12-16 Sum
+2012-01-18-09-09-07 2012-01-25-12-14-25 2012-01-25-12-33-29 2012-01-28-11-12-01 2012-02-02-10-44-08 Sum
+
+Travelled (m)
+2634 2092 2081 6807
+683 348 239 635 1003 2908
+
+Duration (hr)
+7.68 9.32 8.00 25.00
+0.60 0.33 0.23 0.60 0.87 2.63
+
+length of the shortest path from vi to vj would become
+
+dG\(vi,vj)(vi, vj), which can be computed efﬁciently using
+
+the A* algorithm [19]. We therefore compute the ratio
+
+d
+
+=
+
+dG\(vi,vj )(vi,vj ) vi −vj
+
+and
+
+only
+
+allow
+
+pruning
+
+if
+
+it
+
+does
+
+not
+
+exceed a predeﬁned threshold dˆ > 1. Furthermore, we only
+
+prune loop closure but no odometry edges.
+
+V. EVALUATION
+To evaluate our graph pruning method, we apply it as part of a graph-based SLAM algorithm with 360◦ LIDAR data and evaluate the SLAM performance depending on different graph pruning parameters (see Table I) on two public datasets (see Table II).
+Our SLAM algorithm uses g2o [4] for graph optimization. Vertices in our graph have a single laser scan associated to them. New vertices are added in regular distances as keyframes; they are connected by odometry edges that encode incremental localization information. To obtain an odometry edge, we perform early fusion of scan-to-scan matches, wheel odometry, and IMU, if available. This makes our odometry edges quite reliable w.r.t. outliers and motivates our focus on the odometry chain for this work. Additionally, we add loop closure edges by matching scans of non-subsequent vertices. For scan matching, we use the Normal Distributions Transform (NDT) [20]. Place recognition techniques are employed to merge graphs of previous SLAM runs into the current graph. This allows us to build a consistent map using recordings from multiple days without knowing the robot’s starting pose in a shared reference frame beforehand. Dynamic objects are handled with a technique inspired by [17].
+
+A. Datasets
+As our ﬁrst evaluation dataset, we use the Care Home1 dataset from the LCAS-STRANDS long-term dataset collection, initially recorded for [3]. We picked the ﬁrst three days
+
+1 https://lcas.lincoln.ac.uk/nextcloud/shared/datasets/ aaf.html
+
+with long trajectories (>2000 m) that had no recording issues (see Table II). Note that this dataset contains a lot of dynamic objects. Since it does not come with ground truth information, we run our SLAM algorithm without pruning (preference) and use it as a baseline for comparison of trajectories and vertex positions of the pruned graph. This way, we can ascertain how much pruning changes the results of the SLAM algorithm and thus degrades the performance. This experiment design measures how pruning impacts relative SLAM performance rather than the SLAM algorithm’s performance as a whole.
+As our second evaluation dataset, we use ﬁve mapping sessions of the second ﬂoor of the MIT Stata Center2. We have chosen the same datasets as [10] (see Table II). We use the laser data from the base of the PR2 robot (a Hokuyo UTM-30LX Laser), the Microstrain 3DM-GX2 IMU and the robot’s raw wheel odometry. This dataset comes with ground truth information, so in addition to the pruning/no-pruning comparison, we can also evaluate our SLAM algorithm’s performance as a whole.
+B. Effects on Runtime and Memory
+We run our SLAM algorithm on both datasets (see Figure 4) and measure the time it takes to process a single scan (see Figure 5). This includes the duration of scan matching, loop closure search, and the graph optimization. Note that, especially for bigger graphs, the graph optimization makes up the largest portion of the measured time per scan. Considering time per scan and the LIDAR’s frequency allows us to judge whether the algorithm can run in realtime on a robot. All presented results were obtained on a single core of an Intel® i7-8650U @ 1.90GHz CPU.
+In order to assess how pruning improves the memory requirements of our SLAM algorithm, we keep track of the number of vertices in its graph. Only laserscans that are associated to a vertex are needed long-term. So, whenever a vertex gets pruned, the associated laserscan can also be deleted. As visualized on the right side of Figure 5, the number of vertices grows linearly with time when no pruning is performed (preference). However, if pruning is performed, the number of vertices begins to converge to a level dependent on the sˆ and the size of the environment. When using the pcautious conﬁguration for the MIT Stata Center dataset, this barely starts to happen. The effect is more evident for the longer LCAS-Strands Care Home dataset, or when using the paggressive conﬁguration. Note that we start with a new graph for each individual bag ﬁle of a dataset, so the number of vertices drops down to zero at that point in time. After place recognition succeeds, we merge the new and the old graphs and the number of vertices jumps back up.
+C. Effects on Trajectory Error and Map Quality
+In the following, we consider several different error measures to assess the accuracy of the SLAM algorithm. The trajectory error (TE) measures the absolute position errors of the robot’s trajectory during execution. We calculate this
+2 http://projects.csail.mit.edu/stata/index.php
+
+(a) preference, 8520 vertices, 106 785 edges.
+
+(b) paggressive, 826 vertices, 3606 edges.
+
+(c) preference, 3062 vertices, 20 459 edges.
+
+(d) paggressive, 1199 vertices, 3914 edges.
+
+Fig. 4: Maps of LCAS Strands Care Home (top) and MIT Stata Center (bottom), created with different SLAM settings.
+
+TABLE III: SLAM results vs. the ground truth information (top) and vs. reference SLAM conﬁguration (center and bottom). Used metrics: Mean trajectory error (TE), map error (ME) and relative map error (RME) and their respective standard deviation (SD).
+
+Dataset
+MIT Stata Center
+LCAS Strands Care Home
+
+Conﬁg name
+
+TE Mean ± SD
+
+(m)
+
+(deg)
+
+Comparison with ground truth
+preference 0.45 ± 0.37 1.29 ± 2.15 pcautious 0.47 ± 0.42 1.28 ± 2.19 paggressive 0.47 ± 0.33 1.29 ± 2.17
+
+Comparison with SLAM (preference)
+
+preference
+
+—
+
+—
+
+pcautious 0.06 ± 0.08 0.22 ± 0.28
+
+paggressive 0.07 ± 0.07 0.24 ± 0.27
+
+Comparison with SLAM (preference)
+
+preference
+
+—
+
+—
+
+pcautious 0.07 ± 0.13 0.23 ± 0.31
+
+paggressive 0.10 ± 0.21 0.36 ± 0.39
+
+ME Mean ± SD
+
+(m)
+
+(deg)
+
+0.10 ± 0.07 0.12 ± 0.09 0.13 ± 0.11
+
+0.41 ± 0.57 0.46 ± 0.84 0.58 ± 1.02
+
+—
+
+—
+
+0.11 ± 0.07 0.33 ± 0.25
+
+0.13 ± 0.08 0.39 ± 0.34
+
+—
+
+—
+
+0.11 ± 0.10 0.31 ± 0.25
+
+0.06 ± 0.08 0.28 ± 0.25
+
+RME Mean ± SD
+
+(m)
+
+(deg)
+
+0.02 ± 0.03 0.02 ± 0.03 0.03 ± 0.04
+
+0.22 ± 0.31 0.25 ± 0.36 0.37 ± 0.50
+
+—
+
+—
+
+0.00 ± 0.00 0.07 ± 0.09
+
+0.01 ± 0.01 0.13 ± 0.21
+
+—
+
+—
+
+0.02 ± 0.02 0.17 ± 0.07
+
+0.03 ± 0.04 0.20 ± 0.22
+
+Runtime (s)
+1788 1178
+664
+1788 1178
+664
+56 905 7109 1399
+
+Speedup
+— 1.52 2.69
+— 1.52 2.69
+— 8.00 40.68
+
+metric by capturing our SLAM algorithm’s pose estimate after each scan. This pose estimate gets compared to the reference pose estimate or to the ground truth. This metric does not include corrections to the estimated trajectory that become available later, e.g., through loop closures. The map error (ME) shows the absolute position errors of the ﬁnal map, after all data was processed. We calculate this metric by comparing the ﬁnal poses of vertices in the SLAM graph to a reference graph or the ground truth. Both the trajectory error and the map error assess global consistency. For example, these metrics will punish small errors in orientation severely, especially if the map is big. We argue that for most use-cases of lifelong SLAM, local consistency is sufﬁcient. Therefore, we suggest to focus on the relative map error (RME) as
+
+proposed by [21, Section III-A]. We calculate this metric by comparing the relative poses between subsequent vertices in the ﬁnal SLAM graph with the respective relative pose from a reference graph or the ground truth. Note that this procedure may degenerate to assess global consistency, instead. This can happen if so many vertices get pruned that subsequent vertices are not close to each other anymore. In practice, this was not an issue throughout our evaluation, because our pruning thresholds are not that strict.
+In Table III, we compare SLAM results obtained with different conﬁgurations (see Table I) to the ground truth of the MIT Stata Center dataset. Our experiments show that graph pruning results in a speedup of 2.69× at the cost of slightly increased errors on this dataset. If no pruning is
+
+sophisticated marginalization algorithms that are still robust to incorrect loop closures.
+
+(a) MIT Stata Center
+(b) LCAS-STRANDS Care Home
+Fig. 5: Time per scan (left) and number of vertices (right) over time for our two evaluation datasets. Note that the irregularities in the plot are caused by relocalization after a new mapping run of a dataset has started.
+performed, the resource requirements of the SLAM algorithm do not stop growing. This is naturally more evident for the longer LCAS Strands Care Home dataset, where the speedup is 40.68×. Note that the algorithm without pruning is not able to maintain real-time performance towards the end of the run. When using our pruning method, however, this is not the case. Also, we compare the results when performing graph pruning with the results of the preference conﬁguration, which does not perform pruning. This evaluation is helpful when tuning pruning parameters for speciﬁc robots or environments that have different resource requirements, as it does not require ground truth information. Especially when considering the RME, the errors w.r.t. preference roughly ﬁt the increase in errors w.r.t. the ground truth for MIT Stata Center.
+VI. CONCLUSION
+We presented a novel graph pruning algorithm for use in lifelong SLAM. Our key idea is to compute the vertex density using a special density function and to prune vertices in areas where their density is too high. Furthermore, we proposed an approach to marginalize vertices that is robust to wrong loop closures, which was experimentally validated on synthetic examples where it performs signiﬁcantly better than the Chow–Liu tree method used by [8]. Our pruning algorithm was evaluated on two public real-world datasets. The evaluation shows a signiﬁcant speedup (2.69× for the smaller and 40.68× for the larger dataset) at a moderate cost in terms of accuracy compared to standard graph-based SLAM without pruning (13 cm and 6 cm map error, respectively). Compared to the ground truth, the trajectory error increased from 45 cm to 47 cm (or 4.4 %) when using pruning.
+While the proposed algorithm is limited to 2D SLAM, generalization to 3D is straightforward. Future work may include the consideration of the combined effect of pruning multiple vertices/edges as well as the development of more
+
+REFERENCES
+[1] G. Grisetti, R. Ku¨mmerle, C. Stachniss, and W. Burgard, “A tutorial on graph-based SLAM,” IEEE Intelligent Transportation Systems Magazine, vol. 2, no. 4, pp. 31–43, 2010.
+[2] C. Cadena, L. Carlone, H. Carrillo, Y. Latif, D. Scaramuzza, J. Neira, I. Reid, and J. J. Leonard, “Past, present, and future of simultaneous localization and mapping: Toward the robust-perception age,” IEEE Transactions on Robotics, vol. 32, no. 6, pp. 1309–1332, dec 2016.
+[3] T. Krajnik, J. P. Fentanes, M. Hanheide, and T. Duckett, “Persistent localization and life-long mapping in changing environments using the frequency map enhancement,” in 2016 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), oct 2016.
+[4] R. Ku¨mmerle, G. Grisetti, H. Strasdat, K. Konolige, and W. Burgard, “g2o: A general framework for graph optimization,” in Proc. IEEE Int. Conf. Robotics and Automation, May 2011, pp. 3607–3613.
+[5] F. Dellaert, “Factor graphs and gtsam: A hands-on introduction,” Georgia Institute of Technology, Tech. Rep. GT-RIM-CP&R-2012002, Sept. 2012.
+[6] H. Kretzschmar, G. Grisetti, and C. Stachniss, “Lifelong map learning for graph-based slam in static environments,” KI-Ku¨nstliche Intelligenz, vol. 24, no. 3, pp. 199–206, 2010.
+[7] C. Chow and C. Liu, “Approximating discrete probability distributions with dependence trees,” IEEE Transactions on Information Theory, vol. 14, no. 3, pp. 462–467, may 1968.
+[8] H. Kretzschmar, C. Stachniss, and G. Grisetti, “Efﬁcient informationtheoretic graph pruning for graph-based SLAM with laser range ﬁnders,” in IEEE/RSJ Int. Conf. Intelligent Robots and Systems, 2011, pp. 865– 871.
+[9] E. Eade, P. Fong, and M. E. Munich, “Monocular graph SLAM with complexity reduction,” in Proc. IEEE/RSJ Int. Conf. Intelligent Robots and Systems, 2010, pp. 3017–3024.
+[10] M. T. La´zaro, R. Capobianco, and G. Grisetti, “Efﬁcient long-term mapping in dynamic environments,” in Proc. IEEE/RSJ Int. Conf. Intelligent Robots and Systems (IROS), 2018, pp. 153–160.
+[11] G. Grisetti, R. Kummerle, and K. Ni, “Robust optimization of factor graphs by using condensed measurements,” in 2012 IEEE/RSJ International Conference on Intelligent Robots and Systems, oct 2012.
+[12] N. Carlevaris-Bianco and R. M. Eustice, “Generic factor-based node marginalization and edge sparsiﬁcation for pose-graph SLAM,” in 2013 IEEE International Conference on Robotics and Automation, may 2013.
+[13] N. Carlevaris-Bianco, M. Kaess, and R. M. Eustice, “Generic node removal for factor-graph SLAM,” IEEE Transactions on Robotics, vol. 30, no. 6, pp. 1371–1385, dec 2014.
+[14] M. Mazuran, W. Burgard, and G. D. Tipaldi, “Nonlinear factor recovery for long-term SLAM,” The International Journal of Robotics Research, vol. 35, no. 1-3, pp. 50–72, jun 2015.
+[15] D.-N. Ta, N. Banerjee, S. Eick, S. Lenser, and M. E. Munich, “Fast nonlinear approximation of pose graph node marginalization,” in 2018 IEEE International Conference on Robotics and Automation (ICRA). IEEE, 2018, pp. 2494–2501.
+[16] Y. Wang, R. Xiong, and S. Huang, “A pose pruning driven solution to pose feature GraphSLAM,” Advanced Robotics, vol. 29, no. 10, pp. 683–698, jan 2015.
+[17] J. P. Underwood, D. Gillsjo¨, T. Bailey, and V. Vlaskine, “Explicit 3D change detection using ray-tracing in spherical coordinates,” in Proc. IEEE Int. Conf. Robotics and Automation, 2013, pp. 4735–4741.
+[18] G. H. Lee, F. Fraundorfer, and M. Pollefeys, “Robust pose-graph loop-closures with expectation-maximization,” in 2013 IEEE/RSJ International Conference on Intelligent Robots and Systems, nov 2013.
+[19] P. Hart, N. Nilsson, and B. Raphael, “A formal basis for the heuristic determination of minimum cost paths,” IEEE Transactions on Systems Science and Cybernetics, vol. 4, no. 2, pp. 100–107, 1968.
+[20] P. Biber and W. Strasser, “The normal distributions transform: a new approach to laser scan matching,” in 2003 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS 2003), 2003.
+[21] W. Burgard, C. Stachniss, G. Grisetti, B. Steder, R. Ku¨mmerle, C. Dornhege, M. Ruhnke, A. Kleiner, and J. D. Tardo¨s, “A comparison of slam algorithms based on a graph of relations,” in 2009 IEEE/RSJ International Conference on Intelligent Robots and Systems, 2009, pp. 2089–2095.
+

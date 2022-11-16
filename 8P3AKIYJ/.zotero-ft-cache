@@ -1,0 +1,673 @@
+A Survey on Graph Structure Learning: Progress and Opportunities
+
+Yanqiao Zhu1,2 , Weizhi Xu1,2 , Jinghao Zhang1,2 , Yuanqi Du3 Jieyu Zhang4 , Qiang Liu1,2 , Carl Yang5 and Shu Wu1,2∗
+1Center for Research on Intelligent Perception and Computing
+Institute of Automation, Chinese Academy of Sciences 2School of Artiﬁcial Intelligence, University of Chinese Academy of Sciences
+3Department of Computer Science, George Mason University 4The Paul G. Allen School of Computer Science and Engineering, University of Washington
+5Department of Computer Science, Emory University
+yanqiao.zhu@cripac.ia.ac.cn shu.wu@nlpr.ia.ac.cn
+
+Abstract
+Graphs are widely used to describe real-world objects and their interactions. Graph Neural Networks (GNNs) as a de facto model for analyzing graphstructured data, are highly sensitive to the quality of the given graph structures. Therefore, noisy or incomplete graphs often lead to unsatisfactory representations and prevent us from fully understanding the mechanism underlying the system. In pursuit of an optimal graph structure for downstream tasks, recent studies have sparked an effort around the central theme of Graph Structure Learning (GSL), which aims to jointly learn an optimized graph structure and corresponding graph representations. In the presented survey, we broadly review recent progress in GSL methods. Speciﬁcally, we ﬁrst formulate a general pipeline of GSL and review state-of-the-art methods classiﬁed by the way of modeling graph structures, followed by applications of GSL across domains. Finally, we point out some issues in current studies and discuss future directions.
+1 Introduction
+Graphs are ubiquitous in representing objects and their complex interactions. As a powerful tool of learning on graph-structured data, Graph Neural Networks (GNNs) have been widely employed for analytical tasks across various domains. The success of GNNs can be attributed to their ability to simultaneously exploit the rich information inherent in the graph structure and attributes, however, it is inevitable that the provided graph is incomplete and noisy, which poses a great challenge for applying GNNs to real-world problems.
+From the representation learning perspective, GNNs compute node embeddings by recursively aggregating information from neighboring nodes [Gilmer et al., 2017]; such an iterative mechanism has cascading effects — small noise will be propagated to neighborhoods, deteriorating the quality of representations of many others. Consider a social network as an example,
+∗To whom correspondence should be addressed.
+
+Graph Structure Learning
+
+Preliminaries (§2) Graph regularization (§3)
+
+Sparsity Smoothness Community preservation
+
+Structure modeling (§4)
+
+Metric-based approaches
+
+Taxonomy Neural approaches
+
+Direct approaches
+
+Postprocessing
+
+Discrete sampling Residual connections
+
+Applications (§5)
+
+Computer vision and medical imaging Natural language processing Scientiﬁc discovery
+
+Figure 1: Overview of graph structure learning in this survey.
+where nodes correspond to users and edges indicate friendship relations. Fraudulent accounts establish false links to real accounts and thus can easily inject wrong information to the entire network thanks to the recursive aggregation scheme of GNNs, leading to difﬁculty in estimating account creditability. In addition, recent research suggests that unnoticeable, deliberate perturbation (aka., adversarial attacks) in graph structure can easily result in wrong predictions for most GNNs [Dai et al., 2018; Zhu et al., 2019; Zhang and Zitnik, 2020]. Thus, highly-quality graph structure is often required for GNNs to learn informative representations [Luo et al., 2021a].
+On the application side, when modeling the interaction of real-life objects as graphs, we often need to uncover the important substructures (e.g., subgraphs or features) underneath the predictions made by GNNs. Such model transparency is particularly demanding in safety-critical scenarios such as healthcare. For example, for explainable brain network analysis, we need to highlight salient regions of interests (nodes in the brain graph) that contribute most to the prediction task [Li et al., 2021b]. Besides, with limited prior knowledge, the predeﬁned graph structure only carries partial information of the system, hindering our understanding of the underlying mechanism. Molecular graph with atoms and bonds as nodes and edges is a notable example. The given graph structures usually overlook
+
+Input
+
+feature
+
+X<latexitsha1_base64="ZnoQhCDTLpTbZ3oW0OhXV5E4iLk=">AAADEXicbZLLbhMxFIad4VbCrYUlmxEREosqmkEUWFZiw7JIJI2Uiapjz8nEjG+yPbRhNO+AxArehB3qtk/Ag7DHk2TBTDmSpd/fb/sc24cawZ1Pkt+D6MbNW7fv7N0d3rv/4OGj/YPHU6cry3DCtNB2RsGh4AonnnuBM2MRJBV4Sst3rX/6Ga3jWn30a4MLCYXiS87ABzTNqKxnzdn+KBknm4ivi3QnRmQXJ2cHgz9ZrlklUXkmwLl5mhi/qMF6zgQ2w6xyaICVUOA8SAUS3aLelNvEzwPJ46W2YSgfb+i/O2qQzq0lDSsl+JXrey38nzev/PLtoubKVB4V2yZaViL2Om7vHufcIvNiHQQwy0OtMVuBBebDC3WyUNl051qXHqjrUlkJz60+79LCgllxdtGlnpdftqRVglMLdl0b7Xj7EVwVhzkybTff4sYm3E1qG84JBgPBDt0KDPbyu4ouedGrCUpkKESXGt4+dWAKz5mWElReZ0yCLZs6y0OS+ihtevZFxz4K9jA0Stpvi+ti+nKcvh6nH16NjpNdy+yRp+QZeUFS8oYck/fkhEwII5/IV/Kd/Ii+RT+jX9Hldmk02O15QjoRXf0Fa5MEDg==</latexit>
+
+Original graph
+
+<latexit sha1_base64="Ni5bOLiaD0LZ4jHH9VfJZsD2Jtc=">AAADK3icbZLLbtNAFIYn5lbCLYUlEhoRIRUpiuyqpd0gFbGAZZFIGymOouPx2Bl5bpoZ0wbLO54GiRW8CSsQWx6BPeMkC+xyJMu/v3/GZ+ack2jOrAvDH73g2vUbN2/t3O7fuXvv/oPB7sMzq0pD6IQorsw0AUs5k3TimON0qg0FkXB6nhSvG//8AzWWKfnerTSdC8glyxgB59Fi8CQW4JYEePWmxi/xXpyI6lU9ws17Wj9fDIbhOFwHviqirRiibZwudnt/4lSRUlDpCAdrZ1Go3bwC4xjhtO7HpaUaSAE5nXkpQVA7r9YXqfEzT1KcKeMf6fCa/rujAmHtSiR+ZXNs2/Ua+D9vVrrseF4xqUtHJdkkykqOncJNVXDKDCWOr7wAYpg/KyZLMECcr10rSyLq9rdShYPEtqkouWNGXbRpbkAvGblsU8eKjxvSKM4SA2ZVaWVZ0yIm81FKiTLrhtmx9ncTyvj/eMP3jYzsEjTt5LdlkrG8cyYoKKGct6lmTak9k/SCKCFAplVMBJiiruLUJ6kOo7pjX7bsQ2/3/aBE3bG4Ks72x9GL8cG7g+FJuB2ZHfQYPUV7KEJH6AS9Radoggj6hD6jr+hb8CX4HvwMfm2WBr3tnkeoFcHvv1GrDSU=</latexit>
+
+G
+
+= (A, X)
+
+Refined graph structure
+
+A ? <latexitsha1_base64="NwZ1qmnBfUITUOgzUUuxm4rnZSA=">AAAChHicbZHBTttAEIY3hlIaWghw5GIRIXGoIhuIyqkC9cIRJAJIcYhmN+NklV2vtTumjSy/Rq/0tfo23YQc6oSRVvr3mxnN6B+eK+koiv42go3ND1sftz81dz5/2d1r7R88OFNYgT1hlLFPHBwqmWGPJCl8yi2C5gof+fTHPP/4gtZJk93TLMeBhnEmUymAPEoSrsvr6jlxBHbYakedaBHhuoiXos2WcTvcb/BkZEShMSOhwLl+HOU0KMGSFAqrZlI4zEFMYYx9LzPQ6AblYukqPPFkFKbG+pdRuKD/d5SgnZtp7is10MSt5ubwvVy/oPRyUMosLwgz8TYoLVRIJpw7EI6kRUFq5gUIK/2uoZiABUHep9oUrqv635gpAXd1OraQT6T4Vaeu4Kkc15kuFElrfq5QmKJApep05Oa2VE1/lXj1Buvi4awTdzvR3UX7KlreZ5sdsWN2ymL2jV2xG3bLekywnP1mr+xPsBV8Dc6D7ltp0Fj2HLJaBN//AURqyLI=</latexit>
+
+Embeddings
+
+<latexit sha1_base64="fM8/vtPvrAeE804B6b9O/f01TZc=">AAADF3icbZJNb9QwEIa94assXy0cuUSskDhUqwS1wLESF45FYtuKzVKNJ07Wir9kO7RLlL+BxAn+CTfElSM/hDvO7h5IykiW3jyvnRmPhxrBnU+S36Po2vUbN2/t3B7fuXvv/oPdvYcnTtcW2Qy10PaMgmOCKzbz3At2ZiwDSQU7pdXrzj/9yKzjWr3zK8MWEkrFC47gA8oyKpv37YfMebDnu5NkmqwjvirSrZiQbRyf743+ZLnGWjLlUYBz8zQxftGA9RwFa8dZ7ZgBrKBk8yAVSOYWzbroNn4aSB4X2oalfLym/55oQDq3kjTslOCXbuh18H/evPbFq0XDlak9U7hJVNQi9jruOhDn3DL0YhUEoOWh1hiXYAF96FMvC5Vt/1vrygN1fSpr4bnVF31aWjBLjpd96nn1aUM6JTi1YFeN0Y53z8FVuZ8z1Hb9OG5qwt2ktuE/wUAQuO+WYNggv6tpwctBTVAxZEL0qeFdqwNT7AK1lKDyJkMJtmqbLA9JmsO0HdiXPfsw2OMwKOlwLK6Kk+fT9MX04O3B5CjZjswOeUyekGckJS/JEXlDjsmMIDHkM/lKvkVfou/Rj+jnZms02p55RHoR/foL78QGww==</latexit>
+Z
+
+?
+
+Learning objective
+
+<latexit sha1_base64="KqCbZczITwKansa/FI9Jvh/o+jo=">AAACg3icbZFNSyNBEIY7s37E+L0evQwGQRDCjCjrRRD24sFDBKNCEqS6U5M06Z4eumt2NwzzM7yuv8t/Y0/MwYkWNLz9VBVV1MszJR1F0Vsj+LGyurbe3Ghtbm3v7O7t/3xwJrcCe8IoY584OFQyxR5JUviUWQTNFT7y6e8q//gHrZMmvadZhkMN41QmUgB51B9ooIkAVdyWz3vtqBPNI/wq4oVos0V0n/cbfDAyIteYklDgXD+OMhoWYEkKhWVrkDvMQExhjH0vU9DohsV85zI89mQUJsb6l1I4p587CtDOzTT3ldWObjlXwe9y/ZySy2Eh0ywnTMXHoCRXIZmwOkA4khYFqZkXIKz0u4ZiAhYE+TPVpnBd1v/GTAm4q9OxhWwixb86dTlP5LjOdK5IWvN3icIUBSpVpyNXnaVseVfiZQ++ioezTnzRie7O29fRwp8mO2RH7ITF7Be7Zjesy3pMMMNe2H/2GqwGp8FZcP5RGjQWPQesFsHVO1cUyEo=</latexit>
+
+L
+
+Message propagation Structure modeling Graph construction
+
+…
+
+× ×
+…
+×
+
+<latexit sha1_base64="k8q2i7zkue2F1b/EF9SqbnuD6Sw=">AAADGHicbZJNb9QwEIa94aNl+WrhyCVihcShWiWohR4rceG4SGxbaRNVE2eSteKv2g7tEuV3IHGCf8INceXGD+GOs7sHkjKSpTfPa2fG48k0Z9ZF0e9RcOv2nbs7u/fG9x88fPR4b//JqVW1oTiniitznoFFziTOHXMcz7VBEBnHs6x62/lnH9FYpuQHt9KYCiglKxgF51GaCHDLrGiS2ZK1F3uTaBqtI7wp4q2YkG3MLvZHf5Jc0VqgdJSDtYs40i5twDhGObbjpLaogVZQ4sJLCQJt2qyrbsMXnuRhoYxf0oVr+u+JBoS1K5H5nV2Vduh18H/eonbFcdowqWuHkm4SFTUPnQq7FoQ5M0gdX3kB1DBfa0iXYIA636helky0/W+lKgeZ7VNRc8eMuurT0oBeMnrdp45VnzakU5xlBsyq0cqy7j2YLA9ypMqsX8dOtb+bUMb/xxsUOD2wS9A4yG/rrGDloCaokCLnfapZ12rPJF5RJQTIvEmoAFO1TZL7JM1R3A7s65595O2xH5R4OBY3xemrafx6evj+cHISbUdmlzwjz8lLEpM35IS8IzMyJ5Rcks/kK/kWfAm+Bz+Cn5utwWh75inpRfDrL/QvBx8=</latexit>
+Learning parameters the structure learner
+
+Learning GNN parameters
+
+⇥<latexitsha1_base64="XOsYTWQcPA+xZfZh3+8n2/FWzzs=">AAADHHicbZJNb9NAEIY35quEj6Zw5GIRIXGoIhu1wLESF45FatpKcRSN12N75f3S7po2WP4lSJzgn3BDXJH4IdxZJzlgl5FWev28u57Z2Uk1Z9ZF0e9RcOv2nbv39u6PHzx89Hh/cvDk3KraUJxTxZW5TMEiZxLnjjmOl9ogiJTjRVq96/yLj2gsU/LMrTUuBRSS5YyC82g12U8EuDLNm+SsRAftajKNZtEmwpsi3okp2cXp6mD0J8kUrQVKRzlYu4gj7ZYNGMcox3ac1BY10AoKXHgpQaBdNpvK2/CFJ1mYK+OXdOGG/nuiAWHtWqR+Z1enHXod/J+3qF3+dtkwqWuHkm4T5TUPnQq7NoQZM0gdX3sB1DBfa0hLMECdb1YvSyra/rdSlYPU9qmouWNGXfVpYUCXjF73qWPVpy3pFGepAbNutLKsexMmi8MMqTKbF7Iz7e8mlPH/8QYFTg9tCRoH+W2d5qwY1AQVUuS8TzXrWu2ZxCuqhACZNQkVYKq2STKfpDmO24F93bOPvT32gxIPx+KmOH81i1/Pjj4cTU+i3cjskWfkOXlJYvKGnJD35JTMCSU1+Uy+km/Bl+B78CP4ud0ajHZnnpJeBL/+AhxjCDk=</latexit>
+
+Figure 2: A general pipeline of Graph Structure Learning (GSL). GSL methods start with input features and an optional graph structure. The graph structure is iteratively reﬁned via a structure modeling module. With reﬁned graph structures, graph representations are obtained through Graph Neural Networks (GNNs). Finally, the parameters in GNNs and the structure modeling module are updated alternatively (or jointly) until a preset stopping condition is satisﬁed.
+
+non-bonded interactions, which may be of great importance to understand the atom interaction [Leach, 2001].
+The aforementioned issues motivate considerable studies around the central theme of Graph Structure Learning (GSL), which targets at jointly learning an optimized graph structure and its corresponding representations. Unfortunately, many GSL techniques have been proposed across separate research communities and have not yet been systematically reviewed. In order to establish connections among different research lines and deepen the understanding of the status quo, we present the ﬁrst survey that has comprehensively reviewed recent progress of GSL. Speciﬁcally, we formulate the problem and present a general pipeline of learning graph structures. Then, we introduce common graph regularizers, characterize prior studies into three categories, and highlight critical merits of each type. Furthermore, we introduce applications of GSL in different domains such as computer vision and natural language processing and outline potential research directions for further exploration.
+2 Preliminaries
+2.1 Problem Formulation
+Let G = (A, X) denote a graph, where A ∈ RN×N is the adjacency matrix and X ∈ RN×F is the node feature matrix with the i-th entry xi ∈ RF representing the attribute of node vi. Given a (partially available) graph G at the begining, the goal of GSL is to simultaneously learn an adjacency matrix A and its corresponding graph representations Z ∈ RN×F that are optimized for certain downstream tasks.
+Please kindly note that GSL, although conceptually related, is fundamentally distinct to related problems such as graph generation that target at generating novel, diversiﬁed graphs [Du et al., 2021], or graph learning that aims to recover the Laplacian matrix of a homophilous graph corresponding to given node features [Dong et al., 2019].
+A typical GSL model involves two trainable components: (1) a GNN encoder fΘ, receiving one graph as input and producing embeddings for downstream tasks and (2) a struc-
+
+ture learner gΦ, modeling the edge connectivity of the graph. The model parameters {Θ, Φ} are trained with the following
+learning objective:
+
+L = Ltsk(Z , Y ) + λLreg(A , Z , G),
+
+(1)
+
+where the ﬁrst term refers to a task-speciﬁc objective with respect to the ground truth Y , the second term imposes prior constraints on the learned graph and its representations, and λ
+is a hyperparameter.
+
+2.2 Graph Structure Learning Pipeline
+As shown in Figure 2, most existing GSL models follow a three-stage pipeline: (1) graph construction, (2) graph structure modeling, and (3) message propagation.
+Graph construction. Initially, when the given graph structure is incomplete or even unavailable at all, we construct a preliminary graph as a starting point. There are a variety of ways to build such initial graph, among which the two most common options are (1) k Nearest Neighbors (kNN graphs) [Preparata and Shamos, 1985] and (2) proximity thresholding ( -graphs) [Bentley et al., 1977]. Both approaches compute pairwise distance of node features using kernel functions at ﬁrst. For the kNN graphs, we connect two nodes vi, vj if vi is among the k-closest neighbors of vj. For the latter -graphs, we create an edge between two nodes if their similarity is smaller than a preset threshold .
+Graph structure modeling. The core of GSL is the structure learner g that models the edge connectivity to reﬁne the preliminary graph. In this work, we categorize existing studies into the following three groups:
+• Metric-based approaches employ a metric function on pairwise node embeddings to derive edge weights.
+• Neural approaches leverage more expressive neural networks to infer edge weights given node representations.
+• Direct approaches treat the adjacency matrix as free learnable parameters and directly optimize them along with GNN parameters Θ.
+
+Unlike direct approaches, metric-based and neural approaches learn edge connectivities through a parameterized network,
+which receives node representations and produces a matrix A representing the optimized graph structure. After obtaining a primitive graph structure represented via the structure learners, extra postprocessing steps such as discrete sampling may be involved to produce the ﬁnal graph A .
+Message propagation. After obtaining an optimized adjacency matrix A , we employ a GNN encoder f to propagate node features to the reﬁned neighborhoods, which results in embeddings Z .
+Notably, it is common to repeat the last two steps until speciﬁed criteria are satisﬁed due to the difﬁculty of optimizing the graph structure. In other words, the representations resulting from message propagation will be utilized to model edge weights in the second step, iteratively reﬁning both graph topologies and representations.
+
+3 Graph Regularization
+In practice, we often want the learned graphs to satisfy certain properties. Prior to graph structure modeling techniques, we review three general graph regularization techniques in this section: sparsity, smoothness, and community preservation.
+
+3.1 Sparsity
+Motivated by the observation that real-world graphs have noisy, task-irrelevant edges, we usually enforce a sparsity constraint on the adjacency matrix. A common idea is to penalize the 0-norm, which corresponds to the number of nonzero elements:
+
+Lsp(A) = A 0.
+
+(2)
+
+However, minimizing Eq. (2) is generally NP-hard. Therefore,
+
+we usually resort to 1-norm, its convex relaxation, which can be solved using coordinate descent [Wu and Lange, 2008] or
+proximal gradient descent [Beck and Teboulle, 2010]. Another
+
+way to incorporate the sparsity constraint is by its continuous relaxation. Louizos et al. [2018] propose a differentiable
+
+estimator for 0-norm via variational optimization and concrete relaxation.
+
+Besides directly panelizing the non-zero entries, some resort
+
+to implicit sparsiﬁcation as well, e.g., hard thresholding the
+
+adjacency matrix similar to constructing -graphs. Discrete
+
+sampling as mentioned in §4.2 is also helpful for ensuring
+
+sparsity of the learned graphs.
+
+3.2 Smoothness
+Consider each of the N columns of the node feature X as a signal on the graph G. A widely used assumption for graph signal processing is that signals change smoothly between adjacent nodes [Ortega et al., 2018]. To enforce smoothness of the graph signals, we minimize the following term:
+
+Lsm(X, A)
+
+=
+
+1 2
+
+N
+
+Aij(xi − xj)2 = tr(X
+
+LX ),
+
+(3)
+
+i,j=1
+
+where L = D − A and D is the degree matrix of A. An
+
+alternative form of Eq. (3) is to use the normalized graph Lapla-
+
+cian
+
+L
+
+=
+
+D−
+
+1 2
+
+LD
+
+−
+
+1 2
+
+,
+
+which
+
+makes
+
+the
+
+feature
+
+smoothness
+
+independent of node degrees [Chung, 1997]. Theoretically,
+minimizing Eq. (3) penalizes edges connecting distant rows of X, indicating that graphs corresponding to smooth signals have a sparse edge set. Therefore, we may impose an auxiliary connectivity constraint [Kalofolias, 2016]:
+
+Lcon(A) = −1 log(A1),
+
+(4)
+
+where the logarithmic barrier forces the degrees to be positive, but does not panelize individual edges to be sparse. Though minimizing Eq. (4) leads to sparse graphs, changing its coefﬁcient does not control the degree of sparsity but only scales the solution. To directly control the sparsity, it is suggested to use sparsity regularizers (§3.1) together with Lcon.
+
+3.3 Community Preservation
+Intuitively, for real-life graphs nodes in different topological clusters tend to have different labels. As a result, edges spanning multiple communities could be regarded as noise [Zhu et al., 2020b]. From graph spectral theory we know that the rank of one adjacency matrix relates to the number of connected components in that graph and low-rank graphs have a densely connected component [Biggs et al., 1993]. Therefore, to remove potentially noisy edges and best preserve community structures, we introduce a low-rank regularization
+
+Lcp(A) = rank(A).
+
+(5)
+
+Due to the discrete nature of the rank operator, matrix rank minimization is hard. One often seeks to optimize the nuclear norm in place of Eq. (5), which is deﬁned as the sum of its singular values. This heuristic has been observed to produce low-rank solutions in practice [Fuel et al., 2001] and can be optimized efﬁciently (e.g., via singular value thresholding [Cai et al., 2010]).
+
+4 Graph Structure Modeling
+In this section, we examine representative GSL models and discuss their common structure modeling techniques. At ﬁrst, we succinctly discuss three categories of graph structure modeling, which obtains an intermediate graph optimized for certain end tasks. After that, we introduce techniques for postprocessing that learned graph structure. For each category, we summarize representative models in Table 1.
+4.1 Model Taxonomy
+4.1.1 Metric-based Approaches
+Metric-based approaches use kernel functions to compute the similarity between node feature/embedding pairs as the edge weights. According to the network homophily assumption that edges tend to connect similar nodes [Newman, 2018], these approaches reﬁne the graph structure by promoting intra-class connections, leading to more compact representations. Owing to the differentiability of kernel functions, most metric-based approaches enjoy the capability of end-to-end training.
+Gaussian kernels. The pioneering work AGCN [Li et al., 2018] proposes a structure learning model based on distance metric learning. Speciﬁcally, AGCN computes the generalized Mahalanobis distance between each pair of node features.
+
+Table 1: Summary of representative graph structure learning methods.
+
+Method
+
+Reference
+
+Graph construction
+
+Structure modeling
+
+Postprocessing
+
+Graph regularization
+
+Sampling Residual SP[ ] SM[†] CON[‡] CP[ ]
+
+Training
+
+Direct Neural Metric-based
+
+AGCN GRCN IDGL HGSL GDC AM-GCN
+
+[Li et al., 2018] [Yu et al., 2020] [Chen et al., 2020] [Zhao et al., 2021b] [Klicpera et al., 2019] [Wang et al., 2020]
+
+— — — -graphs — kNN graphs
+
+Gaussian kernel Inner product Cosine similarity Cosine similarity Diffusion kernel Multiple kernels
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+• End-to-end • End-to-end • End-to-end • End-to-end • End-to-end • End-to-end
+
+GLCN
+
+[Jiang et al., 2019]
+
+kNN graphs
+
+One-layer neural net
+
+PTDNet [Luo et al., 2021a]
+
+—
+
+Multilayer perceptron
+
+
+
+VIB-GSL [Sun et al., 2022]
+
+—
+
+Dot-product attention
+
+
+
+SAN [Kreuzer et al., 2021]
+
+—
+
+Transformer + Laplace PE
+
+
+
+
+
+
+
+
+
+• End-to-end  • End-to-end
+• End-to-end • End-to-end
+
+GLNN
+
+[Gao et al., 2020]
+
+—
+
+ProGNN
+
+[Jin et al., 2020]
+
+—
+
+LRGNN
+
+[Xu et al., 2021]
+
+—
+
+Free variables Free variables Free variables
+
+
+
+
+
+
+
+
+
+
+
+• End-to-end  • Alternative  • Alternative
+
+Graph regularization: [ ] Sparsity (SP, §3.1) [†] Smoothness (SM, §3.2) [‡] Connectivity (CON, §3.2) [ ] Community preservation (CP, §3.3)
+
+Thereafter, it reﬁnes the topological structures using a Gaussian kernel of size κ given the distance:
+
+φ(xi, xj) = (xi − xj) M (xi − xj),
+
+(6)
+
+Aij = exp
+
+−
+
+φ(xi, xj 2κ2
+
+)
+
+,
+
+(7)
+
+where the symmetric positive semi-deﬁnite matrix M = W W and W ∈ RF ×F is a trainable matrix.
+Inner-product kernels. GRCN [Yu et al., 2020], GAUG-M [Zhao et al., 2021c], and CAGNN [Zhu et al., 2020b] propose to
+model the edge weights by taking inner product of embeddings
+of two end nodes:
+
+A = σ(ZZ ),
+
+(8)
+
+where σ(x) = 1/(1+e−x) is the sigmoid function to normalize the edge weights.
+Cosine similarity kernels. GNN-Guard [Zhang and Zitnik, 2020] and IDGL [Chen et al., 2020] use cosine similarity to
+measure the edge weights:
+
+Aij = cos(zi w, zj w),
+
+(9)
+
+where w ∈ RF is a trainable parameter. Recent work HGSL [Zhao et al., 2021b] extends the idea of IDGL to heterogeneous graphs and jointly considers feature similarity graphs and metapath-induced semantic graphs.
+Diffusion kernels. GDC [Klicpera et al., 2019] employs diffusion kernels to quantify edge connections:
+
+∞
+
+A = θkT k,
+
+(10)
+
+k=0
+
+where θk is the weighting coefﬁcients satisfying
+
+∞ k=0
+
+θk
+
+=
+
+1
+
+and T is the generalized transition matrix. Popular implementa-
+
+tions of T include personalized PageRank [Page et al., 1999]
+
+and heat kernels [Kondor and Lafferty, 2002]. Following GDC,
+
+AdaCAD [Lim et al., 2021] considers both node features and
+
+the graph structure when designing the transition matrix; GADC
+
+[Zhao et al., 2021a] studies the optimal diffusion step for each
+
+node.
+
+Fusion of multiple kernels. To enhance the expressivity, AM-GCN [Wang et al., 2020] utilizes both cosine and heat kernels to learn informative embeddings in the topology space. Similarly, Yuan et al. [2022] employs cosine kernels on node representations and an additional diffusion kernel to encode both local and global aspects of graph structures.
+
+4.1.2 Neural Approaches
+Compared to metric-based approaches, neural approaches utilize a more complicated deep neural network to model edge weights given node features and representations. The representative work GLN [Pilco and Rivera, 2019] leverages a simple one-layer neural network to iteratively learn graph structures based on local and global node embeddings. Similarly, GLCN [Jiang et al., 2019] implements a single-layer neural network to encode pairwise relationship given two node embeddings. NeuralSparse [Zheng et al., 2020] and PTDNet [Luo et al., 2021a] leverage multilayer perceptrons to generate an intermediate graph adjacency matrix, followed by discrete sampling.
+Apart from simple neural nets, many leverage the attention mechanism to model edge connections due to its ability to capture the complex interaction among nodes. GAT [Velicˇkovic´ et al., 2018] pioneers the use of masked self-attention over one-hop neighborhoods:
+
+αij =
+
+exp(LeakyReLU(a [W k∈Ni exp(LeakyReLU(a
+
+xi [W
+
+W xi
+
+xj ])) W xk
+
+]))
+
+,
+
+(11)
+
+where W ∈ RF ×F and a ∈ R2F are learnable parameters. The attentive scores αij specify coefﬁcients to different neighboring nodes. In message propagation, every node computes a
+weighted combination of the features in its neighborhood:
+
+zi = ReLU
+
+j∈Ni αij W xj .
+
+(12)
+
+Compared to vanilla GNNs that operate on a static graph structure, the normalized attention scores αij dynamically ampliﬁes or attenuates existing connections, which form an adjacency matrix representing the learned graph structures.
+One line of improvement of GAT designs different attention mechanisms. Below we discuss some widely-used work; we
+
+refer readers of interest to Lee et al. [2019] for a comprehensive survey. GaAN [Zhang et al., 2018] leverages a gated attention mechanism that dynamically adjusts contribution of each attention head. Gao and Ji [2019] propose to use hard and channel-wise attention that improves computational efﬁciency. PGN [Velicˇkovic´ et al., 2020] and VIB-GSL [Sun et al., 2022] propose to use dot-product self-attention to infer dynamic connections. MAGNA [Wang et al., 2021] proposes attention diffusion which incorporates multi-hop context information. Brody et al. [2022] propose a GAT variant to increase expressiveness of the attention function.
+The other line of development generalizes Transformer-like [Vaswani et al., 2017] full-attention architectures to the graph domain. Unlike previous models that only consider local neighborhoods, Transformer performs message propagation between all nodes and encodes the given graph structure as a soft inductive bias, which provides more ﬂexibility and is able to discover new relations. Since message is propagated regardless of graph connectivity, how to restore the positional and structural information (e.g., local connectivity) of the graph becomes a central issue for Transformer-based models. The earliest work proposes to concatenate Laplacian positional embeddings to node features beforehand [Dwivedi and Bresson, 2020], resembling positional encoding for sequences. Follow-up work Graphomer [Ying et al., 2021] considers additional structural information such as centrality and shortest-path distance. GraphiT [Mialon et al., 2021] proposes relative positional encoding to reweight attention scores by positive deﬁnitive kernels and enriches node features with local subgraph structures. Kreuzer et al. [2021] propose learnable positional encoding, which transforms the Graph’s Laplacian spectrum using another Transformer encoder. Recently, Dwivedi et al. [2022] propose to decouple structural and positional embeddings and enable them to be updated along with other parameters.
+4.1.3 Direct Approaches
+Unlike aforementioned approaches, direct approaches treat the adjacency matrix of the target graph as free variables to learn. Since they do not rely on node representations to model edge connections, direct approaches enjoy more ﬂexibility but have difﬁculty in learning the matrix parameters.
+A large number of direct approaches optimize the adjacency matrix using graph regularizers as mentioned in §3, which explicitly specify the property of the optimal graph. As jointly optimizing adjacency matrix A and model parameters Θ often involves non-differentiable operators, conventional gradientbased optimization is not applicable. Concretely, GLNN [Gao et al., 2020] incorporates the initial graph structure, sparsity and feature smoothness into a hybrid objective. ProGNN [Jin et al., 2020] incorporates a low-rank prior which is implemented using the nuclear norm. Both GLNN and ProGNN use an alternating optimization scheme to iteratively update A and Θ. Follow-up work LRGNN [Xu et al., 2021] propose an efﬁcient algorithm to speed up the low-rank optimization of adjacency matrix.
+Apart from common regularizers, GNNExplainer [Ying et al., 2019] introduces an explanation generation loss based on mutual information that identiﬁes the most inﬂuential subgraph
+
+structure for end tasks:
+
+C
+min − 1y=c log PΦ (Y = y | Ac
+M c=1
+
+σ(M ), Xc) , (13)
+
+where 1 denotes the indicator function, Ac and Xc represent the computation graph and its associated features for label c, and M induces a subgraph for explanation. Recently, GSML [Wan and Kokel, 2021] proposes a meta-learning approach by
+formulating GSL as a bilevel optimization problem, in which
+the inner loop represents downstream tasks and the outer loop
+learns the optimal structure:
+
+A = min Lreg(fΘ (A, X), YU ),
+
+(14)
+
+A∈Φ(G)
+
+s.t. Θ = argmin Ltrain(fΘ(A, X), YL),
+
+(15)
+
+Θ
+
+where Φ(G) speciﬁes an admissible topology space that leads to no singleton nodes, and YU , YL are the labels of nodes in the test and training set, respectively. Due to lacking supervision of test nodes, GSML proposes solutions to the bilevel optimization via meta-gradients.
+The other group of direct approaches model the adjacency matrix in a probabilistic manner, assuming that the intrinsic graph structure is sampled from a certain distribution. The ﬁrst work LDS-GNN [Franceschi et al., 2019] models the edges between each pair of nodes by sampling from a Bernoulli distribution with learnable parameters and frame GSL as a bilevel programming problem. It utilizes the hypergradient estimation to approximate the solution. Besides, BGCN [Zhang et al., 2019] proposes a Bayesian approach which regards the existing graph as a sample from a parametric family of random graphs. Speciﬁcally, it utilizes Monte Carlo dropout to sample the learnable parameters in the model for several times on each generated graph. Similarly, vGCN [Elinas et al., 2020] also formulates GSL from a Bayesian perspective that considers a prior Bernoulli distribution (parameterized by the observed graph) along with a GNN-based likelihood. Since computation of the posterior distribution is analytically intractable, vGCN utilizes variational inference [Kingma and Welling, 2014; Blei et al., 2017] to approximately infer the posterior. The posterior parameters are estimated via gradient-based optimization of the Evidence Lower BOund (ELBO), given by
+
+LELBO(φ) = Eqφ(A) log pΘ(Y | X, A) − KL(qφ(A)
+
+p(A)), (16)
+
+where the ﬁrst term is the GNN-based likelihood and the second measures the KL divergence between the approximated posterior and the prior.
+
+4.2 Postprocessing Graph Structures
+After obtaining an intermediate graph structure A, we consider the following two common postprocessing steps to compute the ﬁnal adjacency matrix A .
+4.2.1 Discrete Sampling GSL models involving a sampling step assume the reﬁned graph is generated via an extra sampling process from certain discrete distributions, whose parameters are given by the entries of the
+
+intermediate graph adjacency matrix A. Instead of directly treating this adjacency matrix as edge connection weights in a deterministic manner, the additional sampling step recovers the discrete nature of the graph and gives the structure learner more ﬂexibility to control the property of the ﬁnal graph, e.g., sparsity.
+Note that sampling from a discrete distribution is not differentiable. Apart from the aforementioned direct approaches (§4.1.3) that employ special optimization methods, we discuss optimization with conventional gradient descent methods via the reparameterization trick that allows gradients to be backpropagated through the sampling operation [Kingma and Welling, 2014; Blei et al., 2017]. A common approach is to leverage the Gumbel-Softmax trick [Jang et al., 2017] to generate differentiable graphs by drawing samples (i.e. edges) from the Gumbel distribution. Consider NeuralSparse [Zheng et al., 2020] as an example; it approximates the categorical distribution as follows:
+
+Auv =
+
+exp((log Auv + v)/τ ) , w∈Nu exp((log Auv + w)/τ )
+
+(17)
+
+where · = − log(− log(s)) is drawn from a Gumbel distribution with noise s ∼ Uniform(0, 1) and τ is a temperature
+
+hyperparameter. To generate a k-neighbor graph, the above
+
+process is repeated without replacement for k times. When τ is
+
+small, the Gumbel distribution resembles a discrete distribution,
+
+which induces strong sparsity on the resulting graph. GAUG-O
+
+[Zhao et al., 2021c] takes a similar approach with an additional
+
+edge prediction loss to stabilize training.
+
+Apart from the Gumbel-Softmax trick, other implementations
+
+of end-to-end discrete sampling include the Gumbel-Max trick
+
+used by AD-GCL [Suresh et al., 2021] and hard concrete
+
+sampling [Louizos et al., 2018] popularized by PGExplainer
+
+[Luo et al., 2020] and PTDNet [Luo et al., 2021a]. GIB
+
+[Wu et al., 2020] proposes two model variants that treats the
+
+attention weights as the parameters of categorical and Bernoulli
+
+distributions, from which samples the reﬁned graph structure.
+
+4.2.2 Residual Connections
+The initial graph structure, if available, usually carries important prior knowledge on the topology. It is thus reasonable to assume that the optimized graph structure slightly shifts from the original one. Based on this assumption, some work adds residual connections [He et al., 2016] to incorporate initial states of the graph structure, which is also found to accelerate and stabilize the training [Li et al., 2018].
+Mathematically, the learned edge weights are combined with the original adjacency matrix using an update function:
+
+A = h(A, A).
+
+(18)
+
+In open literature, we may combine the learned adjacency
+matrix A with the original structure A as the residuals. A hyperparameter α is used to mediate the inﬂuence of each part, in which Eq. (18) is instantiated as:
+
+A = αA + (1 − α)A.
+
+(19)
+
+Other popular choices of h(·, ·) include multilayer perceptrons and channel-wise attention networks, which are able to adaptively fuse the two structures.
+
+Note that the original graph structure could be expressed in different forms other than adjacency matrix. For example, AGCN [Li et al., 2018] connects the graph Laplacian matrix as the prior knowledge; AM-GCN [Wang et al., 2020] propagates node features over the original and learned feature graphs independently and combines both representations to obtain the ﬁnal node embeddings.
+5 Applications
+For real-world applications, many graph-based models admit an incomplete/imperfect graph structure and inherently consider the problem of structure learning. In this section, we brieﬂy review applications of GSL in different domains.
+Natural language processing. GSL techniques are widely employed to obtain ﬁne-grained linguistic representations in the domain of natural language processing, in which graph structures are constructed by treating words as nodes and connecting them according to both semantic and syntactic patterns. For information retrieval, Yu et al. [2021] learn hierarchical query-document matching patterns via discarding unimportant words in document graphs. In relation extraction, Tian et al. [2021] construct a graph based on the linguistic dependency tree and reﬁne the structure by learning different weights for different dependencies. For sentiment analysis, Li et al. [2021a] create a semantic graph via computing selfattention among word representations and a syntactic graph based on the dependency tree. Then, they optimize such two graph structures via a differential regularizer, making them capture distinct information. In question answering, Yasunaga et al. [2021] employ a language-model-based encoder to learn a score for each node so that highlight the most relevant path to the question in the knowledge graph. For fake news detection, Xu et al. [2022] propose a semantic structure reﬁning scheme to distinguish the beneﬁcial snippets from the redundant ones, thus obtaining the ﬁne-grained evidence for justifying news veracity.
+Computer vision and medical imaging. In computer vision, wDAE-GNN [Gidaris and Komodakis, 2019] creates graphs using cosine similarity of the class features to capture the co-dependencies between different classes for few-shot learning; DGCNN [Wang et al., 2019b] recovers the topology of point-cloud data using GSL, and thus enriches the representation power for both classiﬁcation and segmentation on point-cloud data. Another prominent example that applies GSL for imaging data is scene graph generation, which aims to learn relationships between objects. Qi et al. [2018] propose to use convolutions as the structure learner or convolutional LSTMs for spatialtemporal datasets. Latter approaches propose energy-based objectives to incorporates the structure of scene graphs [Suhail et al., 2021] or more general constraints during inference [Liu et al., 2022a]. For medical image analysis, GPNL [Cosmo et al., 2020] leverages metric-based graph structure modeling to learn population graphs representing pairwise patient similarities for disease analysis. FBNetGen [Kan et al., 2022] proposes to learn a functional brain network structure optimized for downstream predictive tasks.
+Scientiﬁc discovery. In scientiﬁc discovery domains, e.g., biology, chemistry, graph structures are usually artiﬁcial to represent structured interactions within the system. For example,
+
+graph structures are constructed for proteins via thresholding the pairwise distance map over all amino acids [Guo et al., 2021; Jumper et al., 2021]. In this case, the long-range contacts are usually ignored while building the graphs [Jain et al., 2021]. For optimizing the properties of molecular graphs, we need to learn to weight skeletons of molecules that depict the essential structures of the compounds with optimal properties [Fu et al., 2022]. Similarly, non-bonded interactions are rarely considered while modeling small molecules [Leach, 2001; Luo et al., 2021b; Satorras et al., 2021], which may be of great importance to understand the key mechanism of the system. Graph structure learning allows for learning a more comprehensive representation of the data with minimal information loss and interpretability for scientiﬁc discovery.
+6 Challenges and Future Directions
+Though promising progress has been made, the development of GSL is still at a nascent stage with many challenges remained unsolved. In this section, we point out some critical problems in current studies and outline several research directions worthy for further investigation.
+Beyond homogeneity. Most of the proposed work focuses on homogeneous graphs, where nodes and edges are of the same type. However, nodes and edges in reality are often associated with multiple types [Yang et al., 2021]. Few attempts have been made to learn a clean structure on heterogeneous graphs till now. How to learn graph structure by considering complex relations between nodes remains widely open.
+Beyond homophily. A large body of current work models the edge weights by measuring similarity of node embedding pairs, which is based on the homophily assumption where similar nodes are likely to be connected. However, in real world problems, there are many graphs exhibit strong heterophily, where connected nodes are dissimilar, e.g., chemical and molecular graphs [Zhu et al., 2020a]. There is abundant room for further progress in designing different strategies to learn heterophilous graph structures.
+Learning structures in absence of rich attributes. Most existing work modiﬁes the graph structure based on node embeddings, where rich attributes are indispensable. However, real-world benchmarks carry sparse initial attributes or even do not carry features at all, e.g., in sequential recommendation only user-item interactions are available [Wang et al., 2019a]. Thereby, the performance of existing methods may be degraded under such scenario. Further work is required to establish the viability of learning a reasonable graph structure when lacking attributes.
+Increasing scalability. Most of existing work involves the computation of pairwise similarity of node embeddings, which suffers from high computational complexity and thereby hinders the applicability of large-scale datasets [Chen et al., 2020]. Further research should be undertaken to increase scalability of GSL methods.
+Towards task-agnostic structure learning. Existing work most requires task-relevant supervision signal for training. In reality, it is often time-consuming to collect high-quality labels and limited supervision deteriorates the quality of the learned graph structures. Recently, self-supervised learning on graphs
+
+[You et al., 2020; Zhu et al., 2021] have been developed to tackle such problem and many efforts in supplementing GSL with selfsupervision have been made — SLAPS [Fatemi et al., 2021] and SUBLIME [Liu et al., 2022b] to name a few. However, a principled understanding of the relation between GSL and self-supervised training objectives are still needed.
+7 Concluding Remarks
+In this paper, we have broadly reviewed existing studies of Graph Structure Learning (GSL). We ﬁrst elaborate the concept of GSL and formulate a general pipeline. Then, we categorize recent work into three groups: metric-based approaches, neural approaches, and direct approaches. We summarize key characteristics in each type and discuss common structure modeling techniques. Furthermore, we discuss applications of GSL in different domains. Finally, we outline challenges in current studies and point out directions for further research. We envision this survey to help expand our understanding of GSL and to guide future development of GSL algorithms.
+References
+[Beck and Teboulle, 2010] A. Beck and M. Teboulle. Gradient-Based Algorithms with Applications to Signal Recovery Problems. In Convex Optimization in Signal Processing and Communications. 2010.
+[Bentley et al., 1977] J. L. Bentley, D. F. Stanat, and E. H. Williams Jr. The Complexity of Finding Fixed-Radius Near Neighbors. Inf. Process. Lett., 1977.
+[Biggs et al., 1993] N. Biggs, N. L. Biggs, and B. Norman. Algebraic Graph Theory. Cambridge University Press, 1993.
+[Blei et al., 2017] D. M. Blei, A. Kucukelbir, and J. D. McAuliffe. Variational Inference: A Review for Statisticians. J. Am. Stat. Assoc., 2017.
+[Brody et al., 2022] S. Brody, U. Alon, and E. Yahav. How Attentive are Graph Attention Networks? 2022.
+[Cai et al., 2010] J.-F. Cai, E. J. Candès, and Z. Shen. A Singular Value Thresholding Algorithm for Matrix Completion. SIAM J. Optim., 2010.
+[Chen et al., 2020] Y. Chen, L. Wu, and M. J. Zaki. Iterative Deep Graph Learning for Graph Neural Networks: Better and Robust Node Embeddings. In NeurIPS, 2020.
+[Chung, 1997] F. R. Chung. Spectral Graph Theory. AMS, 1997.
+[Cosmo et al., 2020] L. Cosmo, A. Kazi, S.-A. Ahmadi, N. Navab, and M. Bronstein. Latent Patient Network Learning for Automatic Diagnosis. In MICCAI, 2020.
+[Dai et al., 2018] H. Dai, H. Li, T. Tian, X. Huang, L. Wang, J. Zhu, and L. Song. Adversarial Attack on Graph Structured Data. In ICML, 2018.
+[Dong et al., 2019] X. Dong, D. Thanou, M. G. Rabbat, and P. Frossard. Learning Graphs From Data: A Signal Representation Perspective. IEEE Signal Process. Mag., 2019.
+[Du et al., 2021] Y. Du, S. Wang, X. Guo, H. Cao, S. Hu, J. Jiang, A. Varala, A. Angirekula, and L. Zhao. GraphGT: Machine Learning Datasets for Deep Graph Generation and Transformation. In NeurIPS Datasets and Benchmarks, 2021.
+
+[Dwivedi and Bresson, 2020] V. P. Dwivedi and X. Bresson. A Generalization of Transformer Networks to Graphs. In DLG@AAAI, 2020.
+[Dwivedi et al., 2022] V. P. Dwivedi, A. T. Luu, T. Laurent, Y. Bengio, and X. Bresson. Graph Neural Networks with Learnable Structural and Positional Representations. 2022.
+[Elinas et al., 2020] P. Elinas, E. V. Bonilla, and L. C. Tiao. Variational Inference for Graph Convolutional Networks in the Absence of Graph Data and Adversarial Settings. In NeurIPS, 2020.
+[Fatemi et al., 2021] B. Fatemi, L. El Asri, and S. M. Kazemi. SLAPS: Self-Supervision Improves Structure Learning for Graph Neural Networks. In NeurIPS, 2021.
+[Franceschi et al., 2019] L. Franceschi, M. Niepert, M. Pontil, and X. He. Learning Discrete Structures for Graph Neural Networks. In ICML, 2019.
+[Fu et al., 2022] T. Fu, W. Gao, C. Xiao, J. Yasonik, C. W. Coley, and J. Sun. Differentiable Scaffolding Tree for Molecule Optimization. In ICLR, 2022.
+[Fuel et al., 2001] M. Fuel, H. Hindi, and S. P. Boyd. A Rank Minimization Heuristic with Application to Minimum Order System Approximation. In ACC, 2001.
+[Gao and Ji, 2019] H. Gao and S. Ji. Graph Representation Learning via Hard and Channel-Wise Attention Networks. In KDD, 2019.
+[Gao et al., 2020] X. Gao, W. Hu, and Z. Guo. Exploring Structure-Adaptive Graph Learning for Robust SemiSupervised Classiﬁcation. In ICME, 2020.
+[Gidaris and Komodakis, 2019] S. Gidaris and N. Komodakis. Generating Classiﬁcation Weights With GNN Denoising Autoencoders for Few-Shot Learning. In CVPR, 2019.
+[Gilmer et al., 2017] J. Gilmer, S. S. Schoenholz, P. F. Riley, O. Vinyals, and G. E. Dahl. Neural Message Passing for Quantum Chemistry. In ICML, 2017.
+[Guo et al., 2021] X. Guo, Y. Du, S. Tadepalli, L. Zhao, and A. Shehu. Generating Tertiary Protein Structures via Interpretable Graph Variational Autoencoders. Bioinfo. Adv., 2021.
+[He et al., 2016] K. He, X. Zhang, S. Ren, and J. Sun. Deep Residual Learning for Image Recognition. In CVPR, 2016.
+[Jain et al., 2021] P. Jain, Z. Wu, M. Wright, A. Mirhoseini, J. E. Gonzalez, and I. Stoica. Representing Long-Range Context for Graph Neural Networks with Global Attention. In NeurIPS, 2021.
+[Jang et al., 2017] E. Jang, S. Gu, and B. Poole. Categorical Reparameterization with Gumbel-Softmax. In ICLR, 2017.
+[Jiang et al., 2019] B. Jiang, Z. Zhang, D. Lin, and J. Tang. Semi-supervised Learning with Graph LearningConvolutional Networks. In CVPR, 2019.
+[Jin et al., 2020] W. Jin, Y. Ma, X. Liu, X. Tang, S. Wang, and J. Tang. Graph Structure Learning for Robust Graph Neural Networks. In KDD, 2020.
+[Jumper et al., 2021] J. Jumper, R. Evans, A. Pritzel, T. Green, M. Figurnov, O. Ronneberger, K. Tunyasuvunakool, R. Bates,
+A. Žídek, A. Potapenko, et al. Highly Accurate Protein Structure Prediction with AlphaFold. Nature, 2021. [Kalofolias, 2016] V. Kalofolias. How to Learn a Graph from Smooth Signals. In AISTATS, 2016.
+
+[Kan et al., 2022] X. Kan, H. Cui, J. Lukemire, Y. Guo, and C. Yang. FBNetGen: Task-aware GNN-based fMRI Analysis via Functional Brain Network Generation. In MIDL, 2022.
+[Kingma and Welling, 2014] D. P. Kingma and M. Welling. Auto-Encoding Variational Bayes. In ICLR, 2014.
+[Klicpera et al., 2019] J. Klicpera, S. Weißenberger, and S. Günnemann. Diffusion Improves Graph Learning. In NeurIPS, 2019.
+[Kondor and Lafferty, 2002] R. Kondor and J. D. Lafferty. Diffusion Kernels on Graphs and Other Discrete Input Spaces. In ICLR, 2002.
+[Kreuzer et al., 2021] D. Kreuzer, D. Beaini, W. L. Hamilton, V. Létourneau, and P. Tossou. Rethinking Graph Transformers with Spectral Attention. In NeurIPS, 2021.
+[Leach, 2001] A. R. Leach. Molecular Modelling: Principles and Applications. Pearson Education, 2001.
+[Lee et al., 2019] J. B. Lee, R. A. Rossi, S. Kim, N. K. Ahmed, and E. Koh. Attention Models in Graphs: A Survey. TKDD, 2019.
+[Li et al., 2018] R. Li, S. Wang, F. Zhu, and J. Huang. Adaptive Graph Convolutional Neural Networks. In AAAI, 2018.
+[Li et al., 2021a] R. Li, H. Chen, F. Feng, Z. Ma, X. Wang, and E. Hovy. Dual Graph Convolutional Networks for Aspect-based Sentiment Analysis. In ACL, 2021.
+[Li et al., 2021b] X. Li, Y. Zhou, N. C. Dvornek, M. Zhang, S. Gao, J. Zhuang, D. Scheinost, L. H. Staib, P. Ventola, and J. S. Duncan. BrainGNN: Interpretable Brain Graph Neural Network for fMRI Analysis. Med. Image Anal., 2021.
+[Lim et al., 2021] J. Lim, D. Um, H. J. Chang, D. U. Jo, and J. Y. Choi. Class-Attentive Diffusion Network for SemiSupervised Classiﬁcation. In AAAI, 2021.
+[Liu et al., 2022a] D. Liu, M. Bober, and J. Kittler. Constrained Structure Learning for Scene Graph Generation. arXiv.org, January 2022.
+[Liu et al., 2022b] Y. Liu, Y. Zheng, D. Zhang, H. Chen, H. Peng, and S. Pan. Towards Unsupervised Deep Graph Structure Learning. In WWW, 2022.
+[Louizos et al., 2018] C. Louizos, M. Welling, and D. P. Kingma. Learning Sparse Neural Networks through L0 Regularization. In ICLR, 2018.
+[Luo et al., 2020] D. Luo, W. Cheng, D. Xu, W. Yu, B. Zong, H. Chen, and X. Zhang. Parameterized Explainer for Graph Neural Network. In NeurIPS, 2020.
+[Luo et al., 2021a] D. Luo, W. Cheng, W. Yu, B. Zong, J. Ni, H. Chen, and X. Zhang. Learning to Drop: Robust Graph Neural Network via Topological Denoising. In WSDM, 2021.
+[Luo et al., 2021b] S. Luo, C. Shi, M. Xu, and J. Tang. Predicting Molecular Conformation via Dynamic Graph Score Matching. In NeurIPS, 2021.
+[Mialon et al., 2021] G. Mialon, D. Chen, M. Selosse, and J. Mairal. GraphiT: Encoding Graph Structure in Transformers. arXiv.org, June 2021.
+[Newman, 2018] M. Newman. Networks (Second Edition). Oxford University Press, 2018.
+[Ortega et al., 2018] A. Ortega, P. Frossard, J. Kovacevic, J. M. F. Moura, and P. Vandergheynst. Graph Signal Processing: Overview, Challenges, and Applications. Proc. IEEE, 2018.
+
+[Page et al., 1999] L. Page, S. Brin, R. Motwani, and T. Winograd. The PageRank Citation Ranking: Bringing Order to the Web. Technical report, November 1999.
+[Pilco and Rivera, 2019] D. S. Pilco and A. R. Rivera. Graph Learning Network: A Structure Learning Algorithm. In LRGD@ICML, 2019.
+[Preparata and Shamos, 1985] F. P. Preparata and M. I. Shamos. Computational Geometry: An Introduction. Springer, 1985.
+[Qi et al., 2018] S. Qi, W. Wang, B. Jia, J. Shen, and S.-C. Zhu. Learning Human-Object Interactions by Graph Parsing Neural Networks. In ECCV, 2018.
+[Satorras et al., 2021] V. G. Satorras, E. Hoogeboom, and M. Welling. E(n) equivariant graph neural networks. In ICML, 2021.
+[Suhail et al., 2021] M. Suhail, A. Mittal, B. Siddiquie, C. Broaddus, J. Eledath, G. Medioni, and L. Sigal. Energybased Learning for Scene Graph Generation. In CVPR, 2021.
+[Sun et al., 2022] Q. Sun, J. Li, H. Peng, J. Wu, X. Fu, C. Ji, and P. S. Yu. Graph Structure Learning with Variational Information Bottleneck. In AAAI, 2022.
+[Suresh et al., 2021] S. Suresh, P. Li, C. Hao, and J. Neville. Adversarial Graph Augmentation to Improve Graph Contrastive Learning. In NeurIPS, 2021.
+[Tian et al., 2021] Y. Tian, G. Chen, Y. Song, and X. Wan. Dependency-driven Relation Extraction with Attentive Graph Convolutional Networks. In ACL, 2021.
+[Vaswani et al., 2017] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, U. Kaiser, and I. Polosukhin. Attention is All You Need. In NIPS, 2017.
+[Velicˇkovic´ et al., 2018] P. Velicˇkovic´, G. Cucurull, A. Casanova, A. Romero, P. Liò, and Y. Bengio. Graph Attention Networks. In ICLR, 2018.
+[Velicˇkovic´ et al., 2020] P. Velicˇkovic´, L. Buesing, M. C. Overlan, R. Pascanu, O. Vinyals, and C. Blundell. Pointer Graph Networks. In NeurIPS, 2020.
+[Wan and Kokel, 2021] G. Wan and H. Kokel. Graph Sparsiﬁcation via Meta-Learning. In DLG@AAAI, 2021.
+[Wang et al., 2019a] S. Wang, L. Hu, Y. Wang, L. Cao, Q. Z. Sheng, and M. A. Orgun. Sequential Recommender Systems: Challenges, Progress and Prospects. In IJCAI, 2019.
+[Wang et al., 2019b] Y. Wang, Y. Sun, Z. Liu, S. E. Sarma, M. M. Bronstein, and J. M. Solomon. Dynamic Graph CNN for Learning on Point Clouds. TOG, 2019.
+[Wang et al., 2020] X. Wang, M. Zhu, D. Bo, P. Cui, C. Shi, and J. Pei. AM-GCN: Adaptive Multi-channel Graph Convolutional Networks. In KDD, 2020.
+[Wang et al., 2021] G. Wang, R. Ying, J. Huang, and J. Leskovec. Multi-hop Attention Graph Neural Networks. In IJCAI, 2021.
+[Wu and Lange, 2008] T. T. Wu and K. Lange. Coordinate Descent Algorithms for Lasso Penalized Regression. Ann. Appl. Stat., 2008.
+[Wu et al., 2020] T. Wu, H. Ren, P. Li, and J. Leskovec. Graph Information Bottleneck. In NeurIPS, 2020.
+[Xu et al., 2021] H. Xu, L. Xiang, J. Yu, A. Cao, and X. Wang. Speedup Robust Graph Structure Learning with Low-Rank Information. In CIKM, 2021.
+
+[Xu et al., 2022] W. Xu, J. Wu, Q. Liu, S. Wu, and L. Wang. Mining Fine-grained Semantics via Graph Neural Networks for Evidence-based Fake News Detection. In WWW, 2022.
+[Yang et al., 2021] C. Yang, Y. Xiao, Y. Zhang, Y. Sun, and J. Han. Heterogeneous Network Representation Learning: A Uniﬁed Framework with Survey and Benchmark. TKDE, 2021.
+[Yasunaga et al., 2021] M. Yasunaga, H. Ren, A. Bosselut, P. Liang, and J. Leskovec. QA-GNN: Reasoning with Language Models and Knowledge Graphs for Question Answering. In NAACL, 2021.
+[Ying et al., 2019] R. Ying, D. Bourgeois, J. You, M. Zitnik, and J. Leskovec. GNN Explainer: A Tool for Post-hoc Explanation of Graph Neural Networks. In NeurIPS, 2019.
+[Ying et al., 2021] C. Ying, T. Cai, S. Luo, S. Zheng, G. Ke, D. He, Y. Shen, and T.-Y. Liu. Do Transformers Really Perform Bad for Graph Representation? In NeurIPS, 2021.
+[You et al., 2020] Y. You, T. Chen, Y. Sui, T. Chen, Z. Wang, and Y. Shen. Graph Contrastive Learning with Augmentations. In NeurIPS, 2020.
+[Yu et al., 2020] D. Yu, R. Zhang, Z. Jiang, Y. Wu, and Y. Yang. Graph-Revised Convolutional Network. In ECML PKDD, 2020.
+[Yu et al., 2021] X. Yu, W. Xu, Z. Cui, S. Wu, and L. Wang. Graph-based Hierarchical Relevance Matching Signals for Ad-hoc Retrieval. In WWW, 2021.
+[Yuan et al., 2022] J. Yuan, M. Cao, H. Cheng, H. Yu, J. Xie, and C. Wang. A Uniﬁed Structure Learning Framework for Graph Attention Networks. Neurocomputing, 2022.
+[Zhang and Zitnik, 2020] X. Zhang and M. Zitnik. GNNGuard: Defending Graph Neural Networks against Adversarial Attacks. In NeurIPS, 2020.
+[Zhang et al., 2018] J. Zhang, X. Shi, J. Xie, H. Ma, I. King, and D.-Y. Yeung. GaAN: Gated Attention Networks for Learning on Large and Spatiotemporal Graphs. In UAI, 2018.
+[Zhang et al., 2019] Y. Zhang, S. Pal, M. Coates, and D. Üstebay. Bayesian Graph Convolutional Neural Networks for Semi-Supervised Classiﬁcation. In AAAI, 2019.
+[Zhao et al., 2021a] J. Zhao, Y. Dong, M. Ding, E. Kharlamov, and J. Tang. Adaptive Diffusion in Graph Neural Networks. In NeurIPS, 2021.
+[Zhao et al., 2021b] J. Zhao, X. Wang, C. Shi, B. Hu, G. Song, and Y. Ye. Heterogeneous Graph Structure Learning for Graph Neural Networks. In AAAI, 2021.
+[Zhao et al., 2021c] T. Zhao, Y. Liu, L. Neves, O. Woodford, M. Jiang, and N. Shah. Data Augmentation for Graph Neural Networks. In AAAI, 2021.
+[Zheng et al., 2020] C. Zheng, B. Zong, W. Cheng, D. Song, J. Ni, W. Yu, H. Chen, and W. Wang. Robust Graph Representation Learning via Neural Sparsiﬁcation. In ICML, 2020.
+[Zhu et al., 2019] D. Zhu, Z. Zhang, P. Cui, and W. Zhu. Robust Graph Convolutional Networks Against Adversarial Attacks. In KDD, 2019.
+[Zhu et al., 2020a] J. Zhu, Y. Yan, L. Zhao, M. Heimann, L. Akoglu, and D. Koutra. Beyond Homophily in Graph Neural Networks: Current Limitations and Effective Designs. In NeurIPS, 2020.
+
+[Zhu et al., 2020b] Y. Zhu, Y. Xu, F. Yu, S. Wu, and L. Wang. CAGNN: Cluster-Aware Graph Neural Networks for Unsupervised Graph Representation Learning. arXiv.org, September 2020.
+[Zhu et al., 2021] Y. Zhu, Y. Xu, F. Yu, Q. Liu, S. Wu, and L. Wang. Graph Contrastive Learning with Adaptive Augmentation. In WWW, 2021.
+

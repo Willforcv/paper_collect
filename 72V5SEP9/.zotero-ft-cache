@@ -1,0 +1,749 @@
+IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JANUARY, 2018
+
+1
+
+Graph SLAM sparsiﬁcation with populated topologies using factor descent optimization
+Joan Vallvé, Joan Solà, Juan Andrade-Cetto
+
+Abstract—Current solutions to the simultaneous localization and mapping (SLAM) problem approach it as the optimization of a graph of geometric constraints. Scalability is achieved by reducing the size of the graph, usually in two phases. First, some selected nodes in the graph are marginalized and then, the dense and non-relinearizable result is sparsiﬁed. The sparsiﬁed network has a new set of relinearizable factors and is an approximation to the original dense one. Sparsiﬁcation is typically approached as a Kullback-Liebler divergence (KLD) minimization between the dense marginalization result and the new set of factors. For a simple topology of the new factors, such as a tree, there is a closed form optimal solution. However, more populated topologies can achieve a much better approximation because more information can be encoded, although in that case iterative optimization is needed to solve the KLD minimization. Iterative optimization methods proposed by the state-of-art sparsiﬁcation require parameter tuning which strongly affect their convergence. In this paper, we propose factor descent and non-cyclic factor descent, two simple algorithms for SLAM sparsiﬁcation that match the state-of-art methods without any parameters to be tuned. The proposed methods are compared against the state of the art with regards to accuracy and CPU time, in both synthetic and real world datasets.
+Index Terms—SLAM, Mapping, Localization.
+I. INTRODUCTION
+S IMULTANEOUS localization and mapping (SLAM) is the problem of building a map of the environment whilst localizing in it. One of its biggest pitfalls is that the problem grows over time: SLAM suffers from scalability. To tackle such growing resource demands, efforts have been invested mainly in two directions: by improving the efﬁciency of the algorithms, and by reducing the problem size. Despite recent improvements in algorithm efﬁciency [1, 2], the later is still of concern, as the complexity of the solution is always linked to the size of the problem. Therefore, methods for reducing the problem size while keeping as much information as possible are essential, especially for large SLAM experiments.
+Several SLAM methods include mechanisms to limit the problem size growth. One of the simplest approaches consists in uniformly limiting the number of poses with respect to time or distance traveled, or to marginalize new poses close
+Manuscript received: September, 10, 2017; Accepted January, 3, 2018. This paper was recommended for publication by Editor Cyrill Stachniss upon evaluation of the Associate Editor and Reviewers’ comments. The authors are with the Institut de Robòtica i Informàtica Industrial, CSIC-UPC, Llorens i Artigas 4-6, 08028 Barcelona, Spain. {jvallve,jsola,cetto}@iri.upc.edu. This work has been supported by the Spanish Ministry of Economy and Competitiveness under Projects ROBINSTRUCT (TIN2014-58178-R) and EB-SLAM (DPI2017-89564-P), by the EU H2020 Project LOGIMATIC (H2020-Galileo-2015-1-687534) and by the Spanish State Research Agency through the María de Maeztu Seal of Excellence to IRI MDM-2016-0656 Digital Object Identiﬁer (DOI): see top of this page.
+
+Fig. 1: Original (top) and sparsiﬁed graph (bottom) with 90% of node reduction in the Freiburg building dataset.
+to old ones, thus growing only with the size of the area being mapped [3]. Another possibility is to process only the most informative features, anticipating their visibility and future contribution to the estimate [4].
+Information metrics can also be used to limit the size of the problem. For instance, Pose SLAM [5] only keeps new observations and robot poses if their entropy-based information content is signiﬁcant. Vial et al. [6] proposed a conservative sparsiﬁcation based on Kullback-Liebler divergence (KLD) for a ﬁlter-based SLAM. The sparsiﬁcation is directly performed over the information matrix instead of creating a set of new factors. Kretzschmar and Stachniss [7] present an information-based compression method for laser-based pose graph SLAM, in which they compute a subset of nodes containing the scans that maximize the mutual information of the map for that subset. Chouldhary et al. [8] also propose to discard some landmarks depending on their information content using an entropy-based cost function.
+Khosoussi et al. face the issue from a different perspective resorting to graph theory [9]. Under some assumptions, the weighted number of spanning trees of a graph approximates the determinant of the state covariance and can be used for measurement selection and pruning.
+Most of the efﬁcient SLAM methods take proﬁt of two important characteristics of SLAM: sparsity and the capability of relinearization. Sparsity arises naturally from the fact that sensor readings establish only a local subset of geometric constraints between variables, leaving most variables unconnected. Maintaining sparsity is important so that a computationally efﬁcient solution to the problem can be found. On the other hand, since SLAM is a non-linear problem that is typically linearized to solve it, methods with the capability of relinearization greatly improve the accuracy of the solution.
+
+2
+
+IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JANUARY, 2018
+
+In general, node marginalization is the only way of reducing the problem size without loss of information. However, marginalization has the disadvantage of causing loss of sparsity, increasing computational cost, and does not allow for relinearization, damping the accuracy.
+In the graph-SLAM context, sparsiﬁcation is the process of ﬁnding the best sparse and relinearizable approximation to the result of marginalization. The impact of sparsiﬁcation can be observed in Fig. 1, where we show the result of marginalization and sparsiﬁcation of the Freiburg building dataset: the sparsiﬁed problem (b) has only 10% of the nodes of the original problem (a), yet it captures almost the same information, yielding a very accurate solution.
+Different approaches pose sparsiﬁcation as a KLD minimization problem [10]–[12]. The best sparse approximation is the one with a minimum KLD with respect to the dense distribution resulting from marginalization. In case of using the simplest topology, i.e. a spanning tree, there exists a closed form for the optimal solution of all factors. However, in the majority of cases a tree topology is too simple to accurately approximate the dense result of node marginalization [13]. For richer (more populated) topologies, an iterative optimization is needed to solve the KLD minimization. This is the focus of the present paper.
+State of the art methods [10]–[12] propose the use of interior point and projected quasi-Newton optimization methods to achieve sparsiﬁcation. Both methods require the tuning of a set of parameters that strongly affects their convergence and robustness.
+We presented in [13] a new optimization method for sparsiﬁcation, named factor descent (FD). FD iteratively optimizes each of the factors leaving the rest of them ﬁxed. For each factor, we compute the mean and information matrix that minimize the KLD given the rest of topology factors. The main advantage of factor descent is that it is a simple algorithm that does not require any tuning.
+In this paper, we formalize and extend the formulation of our factor descent in [13], and provide analytic proofs for all the derivations. We also present a novel non-cyclic factor descent variant which exhibits faster convergence. Furthermore, in sec. IV we explore a new periodic multi-node scheme for simultaneously removing sets of connected nodes that is more efﬁcient in sparse SLAM problems. Our new C++ implementation validates and even enhances our preliminary results obtained by our Matlab prototype [13], as reported in the results section V.
+
+II.NODE REMOVAL AND SPARSIFICATION IN GRAPH SLAM
+
+In graph-based SLAM, the problem is represented as a graph where the nodes refer to the variables and the factors (or edges) represent the geometrical constraints between variables. The state x is modeled as a multi-variate Gaussian distribution, and can include poses of the vehicle along its trajectory, some map representation or any sensor parameter. For each factor, we can deﬁne an error e as the discrepancy between a measurement z and its expectation,
+
+e(x) = h(x) − z + v, v ∼ N (0, Ω−1)
+
+(1)
+
+(a) (b)
+
+(c)
+Fig. 2: Example of marginalization and sparsiﬁcation of a node (gray). Triangle factors are the sparsiﬁcation result.
+
+being h(x) the sensor measurement model and Ω the information matrix of the measurement Gaussian noise v.
+The maximum a posteriori estimation is obtained by iteratively minimizing the Mahalanobis squared norm of all linearized errors
+
+∆x∗ = arg min
+
+∆x
+
+k
+
+hk(x) − zk + Jk∆x
+
+2 Ω− k 1
+
+(2)
+
+being x the state estimate at the current iteration, and Jk the Jacobian of the k-th measurement1. Until convergence, the optimal step ∆x∗ is used to update the expectations hk(x)
+and the Jacobians Jk and (2) is solved again. Current methods
+use Cholesky [2, 15] or QR [1, 16] matrix factorizations to solve for ∆x∗. Incremental methods [1, 2], update the problem
+
+directly on the factorized matrix obtaining important speed-
+
+ups. However, linearization errors are accumulated and the
+
+problem should be often rebuilt partially or completely.
+
+Usually, reducing the SLAM problem size is approached
+
+in two different steps: node marginalization and sparsiﬁcation
+
+(see ﬁg. 2). These two processes can be decoupled, postponing
+
+the second one depending on the available computational
+
+resources [11].
+
+The whole process is faced locally. Once a node is selected
+
+for removal, the local problem is constrained over the im-
+
+mediate surroundings to that node, i.e., the node’s Markov
+
+blanket (all nodes at distance 1) and all its intra-factors (the
+
+factors involving only nodes in the Markov blanket) as shown
+
+in ﬁg. 2 (a). Optionally, this cropped problem can be solved
+
+using (2). Then, the new solution can be used henceforth,
+
+yielding slightly better results especially in on-line cases [12].
+
+The selected node is marginalized via Schur complement, generating a dense information matrix Λ, as in ﬁg. 2 (b).
+The aim of the sparsiﬁcation process is to approximate the dense distribution p(x) ∼ N (µ, Σ = Λ−1), resulting from node marginalization, with a sparse distribution q(x) ∼ N (µ˘, Σ˘ ) deﬁned by a new set of factors as in ﬁg. 2 (c). Sparsiﬁcation is also split in two phases: building a topology, i.e., deﬁning a set of new factors with their measurement model; and factor recovery, i.e., computing their mean and information.
+
+1In case of manifolds, (1) and the squared Mahalanobis norm in (2) become
+
+e(x) = h(x)
+
+z ⊕ v and hk(x)
+
+zk + Jk∆x
+
+2 Ω− k 1
+
+,
+
+respectively,
+
+with
+
+Jk = ∂(hk(x) zk)/∂∆x. The ⊕ and are the addition and subtraction
+
+operators on the manifold, as described in [14].
+
+VALLVÉ et al.: GRAPH SLAM SPARSIFICATION WITH POPULATED TOPOLOGIES USING FACTOR DESCENT
+
+3
+
+A. Topology
+As most of SLAM graphs, the topology is usually made up of factors with relative measurements between pairs of nodes. The simplest topology using relative measurements is a spanning tree. The tree that encodes the most information from the dense distribution is the Chow-Liu Tree (CLT). It is obtained from the tree with factors between the nodes with most mutual information. However, a tree topology is generally too sparse to approximate the original distribution.
+More populated topologies can be built departing from the CLT and adding more factors, also based on the mutual information between nodes. This is sometimes called a subgraph (SG) topology, as in [12]. Alternatively, departing from the CLT again, the cliquey topology [12] converts pairs of independent factors into one single factor by correlating them. In order to gather density, while SG adds more sparse factors, a cliquey topology densiﬁes the existing ones.
+Apart from CLT-based methods, a topology can be computed using a 1-regularized KLD minimization [11].
+
+B. Factor recovery through KLD minimization
+
+Factor recovery computes the means z˘k and information Ω˘ k of all new factors of a given topology. We want those values that minimize the KLD between the dense p(x) and sparse q(x) distributions,
+
+1 DKL = 2
+
+Λ˘ , Σ
+
+− ln |Λ˘ Σ| +
+
+µ˘ − µ
+
+2 Λ˘ −1
+
+−
+
+d
+
+,
+
+(3)
+
+where ·, · denotes the matrix inner product.
+
+Setting the expected measurement z˘k considering the dense
+
+distribution mean z˘k = hk(µ), the Mahalanobis norm term
+
+µ˘ − µ
+
+2 Λ˘
+
+becomes
+
+null.
+
+The
+
+rest
+
+of
+
+the
+
+expression
+
+can
+
+be
+
+simpliﬁed as follows. The dimension d of both distributions
+
+is constant. The log term is decomposed as ln |Λ˘ Σ| =
+
+ln |Λ˘ | + ln |Σ|, whose second term is also constant w.r.t.
+
+all measurements information matrices Ω˘ k. The information
+
+matrix of the approximate distribution can be expressed as Λ˘ = J˘ Ω˘ J˘ = i J˘i Ω˘ iJ˘i, being Ω˘ the block diago-
+nal matrix containing all new factors’ information matrices, Ω˘ = diag(Ω˘ 1 . . . Ω˘ k . . . ), and J˘ = [J˘1 . . . J˘k . . . ] all new
+factors’ Jacobians stacked. With all these considerations, the
+
+factors’ information that minimizes (3) can be written as the
+
+constrained problem
+
+Ω˘ ∗ = arg min J˘ Ω˘ J˘, Σ − ln |J˘ Ω˘ J˘|
+Ω˘
+s.t. Ω˘ = diag(Ω˘ 1 . . . Ω˘ k . . . ), Ω˘ 0. (4)
+
+In some cases such as original problems containing only relative measurements, the dense problem has a rank-deﬁcient information matrix Λ, so the covariance matrix Σ is not deﬁned. In such case, a projection Λ = UDU such that D is invertible can be applied. Then, the KLD minimization in (4) in the reduced space can be performed by substituting
+
+J˘ → J˘U, Σ → D−1.
+
+(5)
+
+To obtain the projection, one can re-parametrize the problem to relative poses w.r.t an arbitrarily chosen node [10, 11] or use a rank-revealing eigen decomposition [12].
+
+C. Factor recovery in closed form According to [12], when the stacked Jacobian J˘ is in-
+vertible, the solution to (4) is obtained by imposing a null derivative w.r.t. all factor information matrices,
+
+Ω˘ k = (J˘kΣJ˘k )−1.
+
+(6)
+
+This is the case, for instance, of the CLT topology in SLAM of relative measurements after applying the projection (5). However, and as has been said, the CLT topology can be too sparse to accurately approximate the exact dense distribution. The closed form (6) can also be used for the case of the cliquey topology. However, the cliquey breaks the homogeneity of measurement models, which is valuable in many cases.
+
+D. Factor recovery via iterative optimization
+
+Other more populated topologies do not admit a closed form solution for all factors, and (4) has to be solved using iterative optimization. The state-of-the-art literature [10]–[12] proposes two different optimization methods for the factor recovery problem: Interior Point (IP) and Limited-memory Projected Quasi-Newton (PQN) [17].
+In IP, the constraint of positive deﬁniteness of the solution is included in the cost function as a log barrier,
+
+J˘ Ω˘ J˘, Σ − ln |J˘ Ω˘ J˘| − ρ ln |Ω˘ |.
+
+(7)
+
+A stricter constraint can be applied instead of the log barrier term to also guarantee conservativeness: ρ ln |Λ−J˘ Ω˘ J˘| [11]. The IP method consists of two nested loops. For each value of the log barrier parameter ρi, the resulting problem (7) is solved in the inner loop. After inner loop convergence, the outer loop decreases the log barrier parameter, ρi+1 = αρi. The outer loop ends when ρi is ‘close enough’ to 0. The inner loop can be solved with Newton’s method using the gradient and Hessian of (7) provided in [12].
+The IP tuning parameters α and ρ0, together with the inner loop’s end conditions, strongly affect its convergence and robustness. To ensure that the positive deﬁnite constraint is satisﬁed, the contributions to the gradient and the Hessian of the KLD and the log barrier terms have to be balanced. Relaxing the inner loop end conditions or enhancing the decrease factor α lead to a lower contribution of the log barrier. This speeds up the method but may converge to a non positive deﬁnite result. In other words, tuning the IP parameters is a trade off between convergence velocity and robustness to divergence. This tuning is oftentimes problemdependent.
+In PQN, the positive deﬁniteness constraint is accomplished through the projection along the line search onto the positive semi-deﬁnite subspace, by setting all negative eigenvalues to zero. PQN does not require the computation and inversion of the Hessian, but it evaluates the cost function in (4) several times at each iteration. Since the Markov Blanket is of small size, the evaluation of (4) is as costly as the Hessian computation, and IP greatly outperforms PQN both in time and convergence. Our preliminary results already showed it in terms of optimization iterations [13].
+
+4
+
+IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JANUARY, 2018
+
+Algorithm 1 Factor descent sparsiﬁcation
+Input: Dense mean µ and covariance Σ, topology Z Output: All factors’ mean z˘k and information Ω˘ k
+// Precompute constant variables
+for zk ∈ Z do Jk ← evaluateJacobian(µ) Φk ← (J˘kΣJ˘k )−1 z˘k ← hk(µ)
+end for
+while not endConditions() do
+// k-th factor descent
+k ← nextF actor() Υ˘ k ← i=k J˘i Ω˘ iJ˘i if ∃Υ˘ −k 1 then
+Ω˘ k ← Φk − (J˘kΥ˘ −k 1J˘k )−1 else
+Ω˘ k ← Φk − L− QL Υ˘ k −Υ˘ kQ0 (Q0Υ˘ kQ0 )−1Q0Υ˘ k QL L−1
+end if
+// Ensure positive deﬁnite solution if Ω˘ k ≺ 0 then
+V, λ ← eigenDecomposition(Ω˘ k) Ω˘ k ← Vdiag(max( , λ))V // is a small positive end if
+end while
+
+An initial guess for relative measurements was proposed in [18] based on the off-diagonal blocks of the dense information matrix. Such initial guess is better than the identity matrix often used by default. Moreover, and contrary to what is stated in [12], it can be used for IP with the appropriate initial ρ.
+The gradient of (7) can be split in two terms, the KLD term and the positive deﬁnite constraint term, ∇ = ∇KLD +ρ∇P D. To balance their respective contributions we take a weighted ratio between both terms’ norms, obtaining a warm start ρ0 = ω ∇KLD / ∇P D .
+
+III. FACTOR RECOVERY WITH FACTOR DESCENT
+
+Our proposed method Factor Descent (FD) is a sparsiﬁcation optimization approach for solving (4) inspired in the coordinate descent optimization method: FD is a blockcoordinate descent method. Each step consists in solving for a block of variables (those deﬁning one factor’s information matrix Ω˘ k) while ﬁxing the rest. So, at each step, (4) becomes
+
+Ω˘ ∗k = arg min Υ˘ k + J˘k Ω˘ kJ˘k, Σ − ln |Υ˘ k + J˘k Ω˘ kJ˘k|
+Ω˘ k
+
+s.t. Ω˘ k 0
+
+(8)
+
+where Υ˘ k is the information matrix considering only the rest of the factors in the topology,
+
+Υ˘ k = J˘i Ω˘ iJ˘i .
+
+(9)
+
+i=k
+
+Descent of the KLD cost is achieved factor by factor, and
+hence the Factor Descent name. When all factors other than k are unchanged, the optimal Ω˘ k can be computed analytically
+by ﬁnding the null derivative of (8). This can be done in
+
+different manners depending on the particular properties of Υ˘ k and J˘k. Consider the following propositions (see proofs
+in the Appendix).
+
+Proposition 1. If Λ˘ is invertible and J˘k is full rank, the derivative of (8) is null in
+
+Ω˘ k =(J˘kΣJ˘k )−1 −L− QL Υ˘ k
+
+−Υ˘ kQ0 (Q0Υ˘ kQ0 )−1Q0Υ˘ k QL L−1
+
+(10)
+
+being the LQ-decomposition of J˘k = LQ = L
+
+0
+
+QL Q0
+
+.
+
+Proposition 2. If Υ˘ k is invertible and J˘k is full rank, the derivative of (8) is null in
+
+Ω˘ k = (J˘kΣJ˘k )−1 − (J˘kΥ˘ −k 1J˘k )−1.
+
+(11)
+
+Furthermore, (11) can be computed efﬁciently by using the Cholesky decomposition of Υ˘ = R R
+
+Ω˘ k = (J˘kΣJ˘k )−1 − (ΓΓ )−1,
+
+(12)
+
+where Γ = J˘kR−1 is directly obtained by back substitution. Prop. 1 applies to all cases if one takes care to project
+the subgraph with (5), but its computation is expensive. It complements and generalizes our previous formulation [13]. Prop. 2 applies to the cases where the subgraph with the current k factor removed would still be full rank. Cases where Prop. 2 does not apply, and therefore we must resort to Prop. 1, include e.g landmarks observed from two monocular views (removing one view’s factor renders the landmark’s depth unobservable) or constrained IMU motion factors (removing the constraining factors renders the IMU biases unobservable).
+The method is described in Alg. 1. Since the ﬁrst term of both (10) and (12) does not depend on the rest of factors, it can be computed only once. This term can be interpreted as the projection, onto the k-th factor’s measurement space, of the information of the dense distribution resulting of the node marginalization. Analogously, the second term in both cases is the projection, onto the measurement space of the k-th factor, of the information of the rest of the factors.
+The projection (5) can be applied in case of a rank-deﬁcient Λ as well (note that the rest of new factor’s information matrix Υ˘ k must be projected too). In this case, assuming Λ˘ is invertible is equivalent to assuming that the rank has not decreased, rk(Λ˘ ) = rk(Λ). Also, a full rank Jacobian J˘k only implies linear independence of all measurement elements. With these considerations, we can ensure that all assumptions are taken without loss of generality.
+
+A. Closed form factors
+In some cases, the second term of (10) is null, yielding the same closed form solution (6) presented in Sec. II-C.
+Proposition 3. If Λ˘ is invertible, J˘k is full rank and nul(Υ˘ k) = rank(J˘k), the derivative of (8) is null in (6).
+Prop. 3 applies to those factors whose Jacobians J˘k are linearly independent of all the rest of factors’ Jacobians of the topology. The closed form (6) introduced in [12] is then the
+
+VALLVÉ et al.: GRAPH SLAM SPARSIFICATION WITH POPULATED TOPOLOGIES USING FACTOR DESCENT
+
+5
+
+TABLE I: Amount of sparsiﬁcation problems solved (#) and Markov blanket mean size (n) in sequential and multi-node schemes.
+
+Manhattan Dataset 1.558 Density
+SG CLT Topology
+
+A
+
+B
+
+A
+
+B
+
+B
+
+A
+
+B
+
+A&B
+
+Fig. 3: Example of sequential (top) and multi-node (bottom) schemes for removing and sparsiﬁying nodes A and B.
+optimal solution. This happens, for instance, for a factor such that without it the topology becomes disconnected. Trivially, this is the case for tree topologies as described in [12]. For general topologies, (6) is applicable to those factors that fulﬁll the condition, and the optimization is only needed to solve for the rest. Therefore, we want to emphasize that (10) is a generalization of the closed form solution in [12].
+The presented formulation amends our prior work [13] where we applied Prop. 3 in case of not invertible Υ˘ k. This is only true in pose-graph SLAM with factors with strictly positive deﬁnite information.
+B. Positive-deﬁniteness
+The solutions (10) and (12) are based on the KLD derivatives, and no positive deﬁniteness constraint is applied. Then, the result can be a non positive deﬁnite solution if the second term of (10) or (12) is larger than the ﬁrst term, that is, if the projection of the information of the rest of factors has a larger information content than the projection of the dense distribution. In other words, when the approximation made by the rest of factors Υ˘ k is not conservative in some direction, the optimal k-factor would subtract this excess of information, leading to a negative eigenvalue of Ω˘ k. In this case, we set all negative eigenvalues to a small positive value.
+C. Non-cyclic Factor Descent
+Factor Descent iterates over all factors cyclically. Clearly, the order in which the factors are optimized can be altered to our beneﬁt. To improve convergence, we propose selecting at each step the factor that will decrease the KLD the most. To ﬁnd it we compute the gradient of the KLD w.r.t. each non-zero element of Ω˘ . Each factor’s information Ω˘ k has its corresponding gradient segment. We select the one with the largest norm as the one that would reduce the KLD the most.
+IV. MULTI-NODE MARGINALIZATION AND
+SPARSIFICATION
+Typically, the marginalization and sparsiﬁcation is done sequentially, node by node. The sequential scheme is the only possible alternative for online marginalization and sparsiﬁcation. However, if the marginalization and sparsiﬁcation of the selected nodes is made periodically, different alternative schemes appear.
+
+Intel 1.227 SG CLT
+
+Scheme
+
+66.6% #n
+
+Node reduction
+
+75%
+
+80%
+
+#n#n
+
+90% #n
+
+Seq. 2332 2.46 2624 2.42 2799 2.41 3149 2.33 Multi 1177 2.91 909 3.18 734 3.45 384 4.21 Seq. 2332 2.71 2624 2.77 2799 2.90 3149 3.10 Multi 1177 2.91 909 3.21 734 3.48 384 4.29
+
+Seq. 818 2.23 920 2.25 981 2.26 1104 2.27 Multi 413 2.41 319 2.57 258 2.75 135 3.19 Seq. 818 2.29 920 2.34 981 2.42 1104 2.64 Multi 413 2.41 319 2.58 258 2.76 135 3.25
+
+Seq. 658 2.22 741 2.20 790 2.20 889 2.20 Multi 332 2.33 256 2.37 207 2.42 108 2.65 Seq. 658 2.26 741 2.27 790 2.29 889 2.36 Multi 332 2.33 256 2.38 207 2.42 108 2.67
+
+Seq. 538 2.02 605 2.04 645 2.04 726 2.07 Multi 271 2.04 210 2.08 170 2.08 89 2.19 Seq. 538 2.02 605 2.05 645 2.06 726 2.12 Multi 271 2.04 210 2.08 170 2.08 89 2.20
+
+FR079 1.232 SG CLT
+
+Killian 1.025 SG CLT
+
+Multi-node marginalization and sparsiﬁcation would also be possible, considering groups of nodes at a time —for instance, those connected by one single factor. In the multinode scheme, neither the procedure for marginalization nor sparsiﬁcation suffer any changes. Taking as the Markov blanket the union of all removed nodes’ Markov blankets, the marginalization of the group of nodes leads to a dense problem in the exact same way as if removing a single node.
+When applicable, this is better than proceeding sequentially, since the sequential procedure generates accumulation of approximations given that some factors resulting from a sparsiﬁcation become intra-factors of the next node to be removed. Fig. 3 depicts a toy example of the two schemes for the removal of two nodes connected by a factor. Note how in the sequential scheme, three factors (marked with a grey area) resulting from the ﬁrst sparsiﬁcation become intra-factors in the second one.
+Normally, connected nodes share most of their Markov blankets, and the multi-node Markov blankets are only slightly larger than the individual ones, depending on the sparsity of the graph. This derives in faster computation of the multinode scheme, since the process is executed once for the entire group of nodes instead of sequentially one by one.
+The resulting topology in the multi-node scheme is usually different than that of the sequential method. While the ﬁrst is designed considering all the connected nodes’ Markov Blankets, the second one is an accumulation of locally designed topologies. For example, when sparsifying with tree topologies such as CLT, the resulting topology in multi-node is indeed a tree, while the accumulation of trees in the sequential scheme usually yields a denser topology. For this reason, the multi-node scheme not always produces more accurate approximations in terms of KLD.
+
+V. RESULTS
+Our preliminary results in [13] were based on the number of optimization iterations instead of CPU computation time.
+
+6
+
+IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JANUARY, 2018
+
+KLD
+
+10 -3 2.6
+
+2.4
+
+2.2
+
+2.0
+
+1.8
+
+1.6
+
+1.4
+
+1.2
+
+1.0
+
+0.8
+
+0.6
+
+0.4
+
+0.2
+
+0
+
+0
+
+0.2
+
+0.4
+
+0.6
+
+t (ms)
+
+IP FD ncFD
+
+0.8
+
+1
+
+1.2
+
+1.1
+
+IP
+
+1.0
+
+FD
+
+0.9
+
+ncFD
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0
+
+0
+
+10
+
+20
+
+30
+
+40
+
+50
+
+t (ms)
+
+Fig. 4: Mean KLD evolution of the compared methods, for all problems of Markov blanket size 3 (left) and 8 (right) in the Manhattan experiment with 80% of node removal. Note the different KLD and time scales.
+
+This is because that implementation was unoptimized and in Matlab, and therefore CPU time measurements were not reliable. In order to rigorously test the performance of our proposed methods, we re-implemented factor descent and Interior Point in C++. The novel non-cyclic factor descent and the multi-node scheme were also implemented. We use our own non-linear least squares SLAM implementation based on Ceres [19]. Due to the bad convergence rates and computational costs obtained in [13] for PQN, it has been discarded as a suitable method for sparsiﬁcation.
+A. Convergence
+In a ﬁrst test, we evaluate the convergence in CPU time of the three iterative sparsiﬁcation methods: factor descent (FD), non-cyclic factor descent (ncFD) and interior point (IP). To guarantee equal conditions for all the methods under test, we executed a SLAM for the Manhattan M3500 dataset [20] with 80% of node removal and stored all sparsiﬁcation problems after each node marginalization. Afterwards, all stored problems were solved by the three methods to compare their convergence rates.
+The parameters for the IP method are explained in Sec. II-D, and were set as a result of a delicate tuning process. Speciﬁcally, we set the ρ decrease parameter α = 0.5. The balance weight ω = 0.1 is used for setting the initial value ρ0. Also, we imposed a relaxed end condition for the inner loop when the norm of the KLD gradient becomes lower than 1. Conversely, neither factor descent nor non-cyclic factor descent have any internal parameter to be tuned.
+Figure 4 shows the mean KLD evolution of each sparsiﬁcation method for all problems of Markov blanket size 3 and 8. The initialization based on the dense information off-diagonal blocks is closer to the optimal solution for small problems than for bigger ones. Likewise, all methods converge faster for small problems since IP has smaller Hessian and FD and ncFD have less factors to iterate over. The convergence of FD and ncFD are comparable to IP’s. Additionally, the beneﬁts of the non-cyclic strategy are clear, specially in bigger problems.
+B. Application
+Our second battery of tests is made with the purpose of evaluating the performance of each method and the multi-
+
+node scheme in a real application.
+We tested each method using both sequential and the multinode scheme on four different datasets [20] with different node reduction levels. Since node selection is out of the scope of this paper, we applied the simple strategy of keeping one node every N . The typology of the chosen datasets is very different. The Manhattan M3500 sequence is large and dense (i.e. highly connected), which means large Markov blankets. On the contrary, the Killian Court dataset has few loop closures leading to small Markov blankets. The Freiburg Building (FR079) and Intel Research Lab sequences are a compromise between the other two datasets. Much denser datasets such as the city10k constitute a challenge for our and the other methods, and are considered for future work.
+We compare four sparsiﬁcation methods. First, CLT with closed form sparsiﬁcation. Second, an SG topology with twice as factors as CLT as described in Sec.II-A. Three iterative optimization methods are compared using SG: IP, FD and ncFD. For these, we apply the same end condition: when all elements of the KLD gradient become lower than 10−3. Also a maximum time condition is set to 50ms.
+An independent experiment is ran for each method. Node marginalization and sparsiﬁcation is performed every 100 nodes. Then, each experiment accumulates the sparsiﬁcation approximations along the whole dataset. The original SLAM graph without removing any node is taken as a baseline. The global KLD between each method and the baseline is computed using (3), but this time evaluating for the whole SLAM problem. As in [12], factors involving previously removed nodes were redirected to the closest existing node. In order not to distort the KLD results, this was also done for the baseline graph. The SLAM problem is relinearized continuously to prevent linearization errors to be confused with sparsiﬁcation inaccuracy.
+Table I contains the amount of sparsiﬁcation problems solved and the Markov blanket mean size using sequential and multi-node schemes for all datasets-node reduction combinations. As can be observed, the multi-node scheme reduces signiﬁcantly the amount of sparsiﬁcations performed —in exchange, there is an increase in the Markov blanket mean size, particularly for highly connected cases.
+Table II includes the ﬁnal global KLD values after applying
+
+VALLVÉ et al.: GRAPH SLAM SPARSIFICATION WITH POPULATED TOPOLOGIES USING FACTOR DESCENT
+
+7
+
+Dataset Scheme
+
+Manhattan
+
+Intel
+
+TABLE II: Comparison of ﬁnal global KLD and CPU time for all methods, different datasets and node reduction levels.
+
+Seq.
+
+Multi
+
+Seq.
+
+Multi
+
+Method
+CLT IP FD ncFD CLT IP FD ncFD
+CLT IP FD ncFD CLT IP FD ncFD
+CLT IP FD ncFD CLT IP FD ncFD
+CLT IP FD ncFD CLT IP FD ncFD
+
+KLD
+59.39 3.72 3.53 3.56 60.39 3.72 3.70 3.76
+28.77 6.04 5.45 5.46 25.33 5.91 5.27 5.34
+12.93 2.63 2.64 2.68 14.81 3.08 3.10 3.17
+2.48 0.37 0.37 0.37 2.15 0.08 0.08 0.08
+
+66.6% RMSE Total time
+
+0.297 0.037 0.044 0.046 0.245 0.017 0.015 0.029
+
+0.23 s 8.49 s 3.30 s 2.38 s 0.17 s 6.12 s 3.11 s 2.15 s
+
+0.094 0.022 0.024 0.024 0.115 0.023 0.021 0.022
+
+0.07 s 1.93 s 1.68 s 1.33 s 0.04 s 1.46 s 1.43 s 1.11 s
+
+0.024 0.008 0.008 0.008 0.022 0.009 0.009 0.010
+
+0.05 s 1.91 s 1.81 s 1.52 s 0.03 s 1.18 s 1.18 s 0.92 s
+
+0.520 0.230 0.230 0.229 0.266 0.053 0.053 0.053
+
+0.03 s 0.10 s 0.05 s 0.04 s 0.02 s 0.07 s 0.03 s 0.03 s
+
+KLD
+45.79 2.58 2.44 2.46 46.73 2.76 2.78 2.76
+29.00 5.66 6.79 5.87 21.90 4.78 4.81 5.16
+13.73 2.27 2.33 2.31 13.05 2.14 2.16 2.22
+6.43 0.43 0.45 0.42 14.83 0.36 0.38 0.36
+
+Node reduction
+
+75%
+
+80%
+
+RMSE Total time KLD RMSE Total time
+
+0.607 0.026 0.024 0.024 0.495 0.028 0.033 0.030
+
+0.26 s 11.41 s 4.91 s 2.97 s 0.16 s 6.70 s 4.24 s 2.29 s
+
+32.33 2.93 2.69 2.69 42.07 3.54 3.54 3.45
+
+0.113 0.036 0.048 0.035 0.168 0.038 0.037 0.030
+
+0.28 s 14.77 s 7.02 s 3.90 s 0.16 s 7.71 s 5.92 s 3.46 s
+
+0.048 0.044 0.049 0.046 0.079 0.028 0.032 0.030
+
+0.08 s 2.21 s 1.81 s 1.35 s 0.04 s 1.37 s 1.38 s 1.00 s
+
+29.16 5.42 5.04 5.15 22.59 5.61 5.59 5.55
+
+0.066 0.022 0.023 0.024 0.043 0.015 0.016 0.016
+
+0.09 s 2.85 s 2.20 s 1.62 s 0.04 s 1.50 s 1.53 s 0.96 s
+
+0.015 0.005 0.004 0.005 0.014 0.003 0.003 0.003
+
+0.06 s 2.15 s 2.05 s 1.59 s 0.03 s 0.97 s 1.01 s 0.78 s
+
+12.92 1.66 1.63 1.71 10.04 1.70 1.70 1.75
+
+0.028 0.003 0.004 0.003 0.018 0.005 0.006 0.005
+
+0.07 s 2.71 s 2.54 s 2.11 s 0.02 s 1.20 s 1.16 s 0.95 s
+
+0.290 0.181 0.192 0.182 0.236 0.181 0.191 0.185
+
+0.04 s 0.22 s 0.07 s 0.07 s 0.01 s 0.11 s 0.04 s 0.03 s
+
+7.92 1.048 2.18 0.580 2.19 0.571 2.18 0.569 3.39 1.337 0.42 0.262 0.41 0.265 0.41 0.255
+
+0.04 s 0.26 s 0.08 s 0.08 s 0.01 s 0.09 s 0.04 s 0.03 s
+
+KLD
+17.32 3.17 2.73 2.75 36.68 4.80 4.71 4.75
+17.47 2.51 2.04 2.14 10.42 1.99 1.93 2.05
+10.11 1.16 0.98 0.99 5.94 0.97 1.15 1.29
+9.51 0.41 0.41 0.41 3.39 0.28 0.28 0.28
+
+90% RMSE Total time
+
+0.258 0.138 0.148 0.136 0.096 0.093 0.094 0.091
+
+0.28 s 25.51 s 16.25 s 13.52 s 0.13 s 13.00 s 20.30 s 16.49 s
+
+0.118 0.022 0.023 0.023 0.157 0.018 0.018 0.018
+
+0.09 s 4.69 s 2.55 s 1.59 s 0.02 s 1.31 s 1.49 s 0.92 s
+
+0.025 0.009 0.010 0.009 0.012 0.017 0.016 0.018
+
+0.07 s 3.75 s 3.29 s 2.63 s 0.01 s 0.92 s 1.11 s 0.98 s
+
+2.887 0.473 0.459 0.385 2.402 0.327 0.352 0.304
+
+0.05 s 1.24 s 0.26 s 0.26 s 0.01 s 0.32 s 0.13 s 0.10 s
+
+Seq.
+
+Multi
+
+Seq.
+
+Multi
+
+FR079
+
+Killian
+
+each method in both sequential and multi-node schemes in the different datasets for different node reduction ratios.
+All methods using SG topology achieve similar KLD and RMSE values in all experiments. However, the approximation of CLT is signiﬁcantly worse. As stated before, the tree topology is too sparse to explain the dense distribution.
+The optimal parameters of IP are not the same for all datasets and node reduction levels, and a signiﬁcant effort on tuning was needed to achieve the optimal KLD reduction with as less computational cost as possible. Conversely, the simplicity of the algorithm and the absence of parameters are the main advantages of FD and ncFD. Furthermore, both FD and ncFD outperform IP in computational time in almost all the experiments.
+A part from CLT, ncFD is faster than IP and FD in almost all experiments. As pointed out before, ncFD convergence improvements w.r.t. FD are specially relevant for the case of big Markov blankets. For this reason, the computation time beneﬁts are more signiﬁcant for the denser datasets. While in the Manhattan dataset the total time spent by ncFD is lower than the cyclic version, in the Killian dataset it is similar.
+The multi-node scheme speeds up all methods by reducing the amount of sparsiﬁcation problems to be solved. However, the Markov blanket growth may explain the different performance in KLD and RMSE depending on the dataset. In the Killian dataset, the multi-node scheme produces more
+
+accurate approximations than the sequential scheme for all methods and reduction levels. However, in the FR079 and Intel datasets, using multi-node instead of sequential is not beneﬁcial in any of the cases regarding to KLD and RMSE. The Markov blanket growth in the Manhattan dataset is strong, undermining the approximation accuracy, especially for high node reduction levels.
+VI. CONCLUSIONS AND FUTURE WORK
+This paper presented Factor Descent and Non-Cyclic Factor Descent, two optimization methods for the sparsiﬁcation of populated topologies in large-scale graph-based SLAM. Our results show that both methods compete with the most popular state-of-art method (interior point) both in accuracy and computational time and even outperform it in most cases. At the same time, the simplicity of the algorithm makes FD and its non-cyclic version ncFD appealing approaches when compared with the interior point method, since they do not require the tuning of parameters. We demonstrated convergence improvements of our novel non-cyclic version ncFD, especially in highly connected problems. We also introduced the new multi-node scheme for periodic marginalization and sparsiﬁcation that is more efﬁcient in moderately connected problems.
+In the course of our investigations we have encountered some convergence difﬁculties to treat much denser datasets
+
+8
+
+IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JANUARY, 2018
+
+such as the city10k. These have been observed with all the methods (FD, IP and PQN) and therefore this type of problems represents still an open challenge. We suspect the issues might be related to numerical stability, since the information content of all factors is very uneven, with differences of several orders of magnitude. We are currently investigating the causes for this poor performance in such larger datasets in order to propose new solutions.
+Also for future work we consider the application of our FD methods for SLAM sessions that include heterogeneous measurement sources such as image projection of 3D points or IMU measurements, including their biases.
+
+Proof: Consider J˘k ∈ Rm×n,Υ˘ ∈ Rn×n, n > m. Since J˘k is full rank, rk(J˘k) = m. According to Prop. 1, ∃(Q0Υ˘ kQ0 )−1 and rk(Q0Υ˘ kQ0 ) = n − m. Since Q is orthogonal, rk(QΥ˘ kQ ) = rk(Υ˘ k) = n−nul(Υ˘ k) = n−rk(J˘k) = n−m. According to the Schur complement rank additivity formula
+rk(QΥ˘ kQ ) = rk(Q0Υ˘ kQ0 ) + rk(QLΥ˘ kQL − QLΥ˘ kQ0 (Q0Υ˘ kQ0 )−1Q0Υ˘ kQL ),
+then QLΥ˘ kQL − QLΥ˘ kQ0 (Q0Υ˘ kQ0 )−1Q0Υ˘ kQL = 0 since its rank is null. Then, (10) becomes (6).
+
+APPENDIX Proposition 1. If Λ˘ is invertible and J˘k is full rank, the derivative of (8) is null in
+
+Ω˘ k =(J˘kΣJ˘k )−1 −L− QL Υ˘ k
+
+−Υ˘ kQ0 (Q0Υ˘ kQ0 )−1Q0Υ˘ k QL L−1
+
+(13)
+
+being the LQ-decomposition of J˘k = LQ = L
+
+0
+
+QL Q0
+
+.
+
+Proof: The derivative of (8) w.r.t Ω˘ k is
+
+∂DKL ∂Ω˘ k
+
+= J˘kΣJ˘k
+
+− J˘k(Υ˘ k + J˘k Ω˘ kJ˘k)−1J˘k
+
+.
+
+(14)
+
+Applying the decomposition into the second term:
+
+J˘k(Υ˘ k + J˘k Ω˘ kJ˘k)−1J˘k
+
+=LQ(Υ˘ k + Q L Ω˘ kLQ)−1Q L
+
+=L(QΥ˘ kQ + L Ω˘ kL)−1L
+
+=L
+
+0
+
+L Ω˘ kL + QLΥ˘ kQL Q0Υ˘ kQL
+
+QLΥ˘ kQ0 −1 L
+
+Q0Υ˘ kQ0
+
+0
+
+=L L Ω˘ kL + QLΥ˘ kQL
+
+− QLΥ˘ kQ0 (Q0Υ˘ kQ0 )−1Q0Υ˘ kQL −1L
+
+= Ω˘ k + L− QLΥ˘ kQL
+
+− QLΥ˘ kQ0 (Q0Υ˘ kQ0 )−1Q0Υ˘ kQL L−1 −1. (15)
+
+Substituting in (14) and imposing null derivative leads to (13). Since Q is orthogonal and Q0Λ˘ Q0 = Q0Υ˘ kQ0 , then ∃Λ˘ −1 ⇒ ∃(Q0Λ˘ Q0 )−1 ⇒ ∃(Q0Υ˘ kQ0 )−1 .
+Proposition 2. If Υ˘ k is invertible and J˘k is full rank, the derivative of (8) is null in
+
+Ω˘ k = (J˘kΣJ˘k )−1 − (J˘kΥ˘ −k 1J˘k )−1.
+
+(16)
+
+Proof: If Υ˘ k is invertible, applying the Woodbury matrix identity forwards and backwards to the second term of (14)
+
+J˘k(Υ˘ k + J˘k Ω˘ kJ˘k)−1J˘k = J˘k(Υ˘ −k 1 − Υ˘ −k 1J˘k (Ω˘ −k 1 + J˘kΥ˘ −k 1J˘k )−1J˘kΥ˘ k−1)J˘k = J˘kΥ˘ −k 1J˘k − J˘kΥ˘ −k 1J˘k (Ω˘ −k 1 + J˘kΥ˘ −k 1J˘k )−1J˘kΥ˘ −k 1J˘k = ((J˘kΥ˘ −k 1J˘k )−1 + Ω˘ k)−1.
+
+Substituting in (14) and imposing null derivative leads to (16). Proposition 3. If Λ˘ is invertible, J˘k is full rank and nul(Υ˘ k) = rk(J˘k), the derivative of (8) is null in (6).
+
+REFERENCES
+[1] M. Kaess, H. Johannsson, R. Roberts, V. Ila, J. J. Leonard, and F. Dellaert, “iSAM2: Incremental smoothing and mapping using the bayes tree,” Int. J. Robotics Res., vol. 31, no. 2, pp. 216–235, 2011.
+[2] V. Ila, L. Polok, M. Solony, and P. Svoboda, “SLAM++-A highly efﬁcient and temporally scalable incremental SLAM framework,” Int. J. Robotics Res., vol. 36, no. 2, pp. 210–230, 2017.
+[3] H. Johannsson, M. Kaess, M. Fallon, and J. Leonard, “Temporally scalable visual SLAM using a reduced pose graph,” in Proc. IEEE Int. Conf. Robotics Autom., Karlsruhe, May 2013, pp. 54–61.
+[4] L. Carlone and K. Sertac, “Attention and anticipation in fast visualinertial navigation,” pp. 3886–3893.
+[5] V. Ila, J. M. Porta, and J. Andrade-Cetto, “Information-based compact Pose SLAM,” IEEE Trans. Robotics, vol. 26, no. 1, pp. 78–93, 2010.
+[6] J. Vial, H. Durrant-Whyte, and T. Bailey, “Conservative sparsiﬁcation for efﬁcient and consistent approximate estimation,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst., San Francisco, Sep. 2011, pp. 886–893.
+[7] H. Kretzschmar and C. Stachniss, “Information-theoretic compression of pose graphs for laser-based SLAM,” Int. J. Robotics Res., vol. 31, no. 11, pp. 1219–1230, 2012.
+[8] S. Choudhary, V. Indelman, H. Christensen, and F. Dellaert, “Information-based reduced landmark SLAM,” in Proc. IEEE Int. Conf. Robotics Autom., Seattle, May 2015, pp. 4620–4627.
+[9] K. Khosoussi, G. S. Sukhatme, S. Huang, and G. Dissanayake, “Designing sparse reliable pose-graph slam: A graph-theoretic approach,” arXiv preprint arXiv:1611.00889, 2016.
+[10] N. Carlevaris-Bianco, M. Kaess, and R. M. Eustice, “Generic node removal for factor-graph SLAM,” IEEE Trans. Robotics, vol. 30, no. 6, pp. 1371–1385, 2014.
+[11] K. Eckenhoff, L. Paull, and G. Huang, “Decoupled, consistent node removal and edge sparsiﬁcation for graph-based SLAM,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst., Daejeon, pp. 3275–3282.
+[12] M. Mazuran, W. Burgard, and G. D. Tipaldi, “Nonlinear factor recovery for long-term SLAM,” Int. J. Robotics Res., vol. 35, no. 1-3, pp. 50–72, 2016.
+[13] J. Vallvé, J. Solà, and J. Andrade-Cetto, “Factor descent optimization for sparsiﬁcation in graph SLAM,” in Proc. Eur. Conf. Mobile Robots, Paris, Sep. 2017, p. to appear.
+[14] R. Smith, M. Self, and P. Cheeseman, “Estimating uncertain spatial relationships in robotics,” in Autonomous Robot Vehicles, 1990, pp. 167– 193.
+[15] R. Kummerle, G. Grisetti, H. Strasdat, K. Konolige, and W. Burgard, “g2o: A general framework for graph optimization,” in Proc. IEEE Int. Conf. Robotics Autom., Shanghai, May 2011, pp. 3607–3613.
+[16] F. Dellaert and M. Kaess, “Square root SAM: Simultaneous localization and mapping via square root information smoothing,” Int. J. Robotics Res., vol. 25, no. 12, pp. 1181–1204, 2006.
+[17] M. Schmidt, E. Berg, M. Friedlander, and K. Murphy, “Optimizing costly functions with simple constraints: A limited-memory projected quasi-Newton algorithm,” in Artiﬁcial Intelligence and Statistics, 2009, pp. 456–463.
+[18] M. Mazuran, G. D. Tipaldi, L. Spinello, and W. Burgard, “Nonlinear graph sparsiﬁcation for SLAM,” in Robotics: Science and Systems, Berkeley, Jul. 2014, pp. 1–8.
+[19] S. Agarwal, K. Mierle, and Others, “Ceres solver,” http://ceres-solver. org.
+[20] L. Carlone, http://www.lucacarlone.com/index.php/resources/datasets.
+
